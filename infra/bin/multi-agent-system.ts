@@ -6,6 +6,7 @@ import { DatabaseStack } from '../lib/database-stack';
 import { EcsStack } from '../lib/ecs-stack';
 import { LoadBalancerStack } from '../lib/load-balancer-stack';
 import { MonitoringStack } from '../lib/monitoring-stack';
+import { StreamingApiStack } from '../lib/streaming-api-stack';
 
 const app = new cdk.App();
 
@@ -55,6 +56,16 @@ const ecsStack = new EcsStack(app, `${stackPrefix}-ECS-${environment}`, {
   stackName: `${stackPrefix}-ECS-${environment}`,
 });
 
+// Streaming API Stack - AppSync GraphQL API
+const streamingApiStack = new StreamingApiStack(app, `${stackPrefix}-StreamingAPI-${environment}`, {
+  env,
+  vpc: networkStack.vpc,
+  ecsSecurityGroup: networkStack.ecsSecurityGroup,
+  environment,
+  description: 'AppSync GraphQL API for multi-agent system',
+  stackName: `${stackPrefix}-StreamingAPI-${environment}`,
+});
+
 // Monitoring Stack - CloudWatch, Alarms
 const monitoringStack = new MonitoringStack(app, `${stackPrefix}-Monitoring-${environment}`, {
   env,
@@ -70,10 +81,12 @@ databaseStack.addDependency(networkStack);
 loadBalancerStack.addDependency(networkStack);
 ecsStack.addDependency(databaseStack);
 ecsStack.addDependency(loadBalancerStack);
+streamingApiStack.addDependency(networkStack);
+streamingApiStack.addDependency(ecsStack);
 monitoringStack.addDependency(ecsStack);
 
 // Add tags to all stacks
-const stacks = [networkStack, databaseStack, ecsStack, loadBalancerStack, monitoringStack];
+const stacks = [networkStack, databaseStack, ecsStack, loadBalancerStack, streamingApiStack, monitoringStack];
 stacks.forEach(stack => {
   cdk.Tags.of(stack).add('Project', 'MultiAgentSystem');
   cdk.Tags.of(stack).add('Environment', environment);

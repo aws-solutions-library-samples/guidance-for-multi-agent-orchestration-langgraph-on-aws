@@ -8,6 +8,9 @@ The infrastructure consists of:
 - **5 ECS Fargate clusters** (one per agent)
 - **Application Load Balancer** with path-based routing
 - **Aurora PostgreSQL database cluster** for shared data with read replicas
+- **AppSync GraphQL API** with real-time subscriptions and Lambda resolvers
+- **DynamoDB tables** for chat sessions, messages, and agent status
+- **Cognito User Pool** for authentication
 - **ECR repositories** for container images
 - **CloudWatch monitoring** with alarms and dashboards
 - **VPC with public/private subnets** for network isolation
@@ -65,11 +68,12 @@ cdk diff
 # Deploy all stacks
 npm run deploy
 
-# Or deploy individual stacks
+# Or deploy individual stacks (in dependency order)
 cdk deploy MultiAgentSystem-Network-dev
 cdk deploy MultiAgentSystem-Database-dev
 cdk deploy MultiAgentSystem-ECS-dev
 cdk deploy MultiAgentSystem-LoadBalancer-dev
+cdk deploy MultiAgentSystem-StreamingAPI-dev
 cdk deploy MultiAgentSystem-Monitoring-dev
 ```
 
@@ -135,6 +139,35 @@ Each container receives these environment variables:
 - `ENVIRONMENT` - Deployment environment (dev/staging/prod)
 - `AWS_DEFAULT_REGION` - AWS region
 - Database connection details via AWS Secrets Manager
+
+## GraphQL API Setup
+
+The AppSync GraphQL API provides a modern interface to the multi-agent system with:
+- **Real-time subscriptions** for chat messages and agent status updates
+- **Cognito authentication** for secure access
+- **Lambda resolvers** that communicate with ECS agents
+- **DynamoDB storage** for chat sessions and message history
+
+### API Endpoints
+
+After deployment, you'll get these outputs:
+- **GraphQL API URL**: For client applications
+- **User Pool ID**: For authentication setup
+- **User Pool Client ID**: For client configuration
+
+### Testing the API
+
+```bash
+# Get API details from stack outputs
+aws cloudformation describe-stacks --stack-name MultiAgentSystem-StreamingAPI-dev
+
+# Create a test user in Cognito
+aws cognito-idp admin-create-user \
+  --user-pool-id <user-pool-id> \
+  --username testuser \
+  --temporary-password TempPass123! \
+  --message-action SUPPRESS
+```
 
 ## Database Setup
 
@@ -241,8 +274,9 @@ To destroy all resources:
 # Destroy all stacks
 npm run destroy
 
-# Or destroy individual stacks (in reverse order)
+# Or destroy individual stacks (in reverse dependency order)
 cdk destroy MultiAgentSystem-Monitoring-dev
+cdk destroy MultiAgentSystem-StreamingAPI-dev
 cdk destroy MultiAgentSystem-LoadBalancer-dev
 cdk destroy MultiAgentSystem-ECS-dev
 cdk destroy MultiAgentSystem-Database-dev

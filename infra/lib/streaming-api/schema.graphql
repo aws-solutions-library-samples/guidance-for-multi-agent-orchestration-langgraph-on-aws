@@ -1,0 +1,217 @@
+# Multi-Agent System GraphQL Schema
+# This schema defines the API for interacting with the ECS-based multi-agent system
+
+# Scalar types
+scalar AWSDateTime
+scalar AWSJSON
+
+# Enums
+enum AgentType {
+  ORDER_MANAGEMENT
+  PRODUCT_RECOMMENDATION
+  PERSONALIZATION
+  TROUBLESHOOTING
+  SUPERVISOR
+}
+
+enum AgentHealthStatus {
+  HEALTHY
+  DEGRADED
+  UNHEALTHY
+  UNKNOWN
+}
+
+enum MessageSender {
+  USER
+  AGENT
+  SYSTEM
+}
+
+enum SessionStatus {
+  ACTIVE
+  CLOSED
+  PAUSED
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+# Core Types
+type ChatMessage {
+  id: ID!
+  sessionId: ID!
+  content: String!
+  sender: MessageSender!
+  timestamp: AWSDateTime!
+  agentResponse: AgentResponse
+  metadata: AWSJSON
+}
+
+type AgentResponse {
+  agentType: AgentType!
+  content: String!
+  confidence: Float
+  processingTime: Int
+  metadata: AWSJSON
+  timestamp: AWSDateTime!
+}
+
+type ChatSession {
+  sessionId: ID!
+  userId: ID!
+  createdAt: AWSDateTime!
+  lastActivity: AWSDateTime!
+  status: SessionStatus!
+  messageCount: Int!
+  metadata: AWSJSON
+  messages: [ChatMessage!]
+}
+
+type AgentStatus {
+  agentId: ID!
+  type: AgentType!
+  status: AgentHealthStatus!
+  lastHeartbeat: AWSDateTime!
+  activeConnections: Int!
+  averageResponseTime: Float
+  errorRate: Float
+  metadata: AWSJSON
+}
+
+type TaskResult {
+  taskId: ID!
+  agentType: AgentType!
+  status: TaskStatus!
+  result: AWSJSON
+  error: String
+  startTime: AWSDateTime!
+  endTime: AWSDateTime
+  processingTime: Int
+}
+
+type AggregatedResponse {
+  requestId: ID!
+  query: String!
+  responses: [AgentResponse!]!
+  totalAgents: Int!
+  successfulResponses: Int!
+  failedResponses: Int!
+  averageResponseTime: Float!
+  timestamp: AWSDateTime!
+}
+
+# Response Types
+type ChatResponse {
+  success: Boolean!
+  message: ChatMessage
+  error: String
+}
+
+type TaskResponse {
+  success: Boolean!
+  taskResult: TaskResult
+  error: String
+}
+
+type SessionResponse {
+  success: Boolean!
+  session: ChatSession
+  error: String
+}
+
+# Input Types
+input SendChatInput {
+  sessionId: ID!
+  message: String!
+  metadata: AWSJSON
+}
+
+input CreateSessionInput {
+  userId: ID!
+  metadata: AWSJSON
+}
+
+input ExecuteTaskInput {
+  agentType: AgentType!
+  task: String!
+  priority: Int
+  timeout: Int
+  metadata: AWSJSON
+}
+
+input AggregateDataInput {
+  query: String!
+  agentTypes: [AgentType!]
+  timeout: Int
+  metadata: AWSJSON
+}
+
+# Queries
+type Query {
+  # Chat and Session Queries
+  getSession(sessionId: ID!): ChatSession
+  getUserSessions(userId: ID!, limit: Int, nextToken: String): [ChatSession!]
+  getChatHistory(sessionId: ID!, limit: Int, nextToken: String): [ChatMessage!]
+  
+  # Agent Status Queries
+  getAgentStatus(agentId: ID): AgentStatus
+  getAllAgentStatuses: [AgentStatus!]
+  getAgentsByType(agentType: AgentType!): [AgentStatus!]
+  
+  # Task Queries
+  getTaskResult(taskId: ID!): TaskResult
+  getUserTasks(userId: ID!, limit: Int, nextToken: String): [TaskResult!]
+  
+  # Health Check
+  healthCheck: String!
+}
+
+# Mutations
+type Mutation {
+  # Chat Operations
+  sendChat(input: SendChatInput!): ChatResponse!
+  createSession(input: CreateSessionInput!): SessionResponse!
+  closeSession(sessionId: ID!): SessionResponse!
+  
+  # Agent Task Operations
+  executeTaskOnAgent(input: ExecuteTaskInput!): TaskResponse!
+  aggregateDataFromAgents(input: AggregateDataInput!): AggregatedResponse!
+  
+  # Agent Management
+  updateAgentStatus(agentId: ID!, status: AgentHealthStatus!): AgentStatus
+}
+
+# Subscriptions for Real-time Updates
+type Subscription {
+  # Chat Subscriptions
+  onChatMessage(sessionId: ID!): ChatResponse
+    @aws_subscribe(mutations: ["sendChat"])
+  
+  onSessionUpdate(userId: ID!): SessionResponse
+    @aws_subscribe(mutations: ["createSession", "closeSession"])
+  
+  # Agent Status Subscriptions
+  onAgentStatusChange: AgentStatus
+    @aws_subscribe(mutations: ["updateAgentStatus"])
+  
+  onAgentHealthChange: AgentStatus
+    @aws_subscribe(mutations: ["updateAgentStatus"])
+  
+  # Task Subscriptions
+  onTaskComplete(userId: ID!): TaskResponse
+    @aws_subscribe(mutations: ["executeTaskOnAgent"])
+  
+  onAggregationComplete(userId: ID!): AggregatedResponse
+    @aws_subscribe(mutations: ["aggregateDataFromAgents"])
+}
+
+# Schema Definition
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
