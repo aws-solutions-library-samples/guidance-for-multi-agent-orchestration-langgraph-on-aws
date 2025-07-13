@@ -353,3 +353,4 @@ __marimo__/
 test_*
 .DS_Store
 *.db
+.mcp.json
