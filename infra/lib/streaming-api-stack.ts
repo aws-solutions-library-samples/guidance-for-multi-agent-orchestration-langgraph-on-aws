@@ -13,6 +13,7 @@ export interface StreamingApiStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;
   ecsSecurityGroup: ec2.SecurityGroup;
   environment: string;
+  supervisorAgentUrl?: string;
 }
 
 export class StreamingApiStack extends cdk.Stack {
@@ -217,13 +218,42 @@ export class StreamingApiStack extends cdk.Stack {
       'Allow Lambda to communicate with ECS services on HTTPS'
     );
 
+    // Create Lambda layer for dependencies
+    const resolverLayer = new lambda.LayerVersion(this, 'GraphQLResolverLayer', {
+      layerVersionName: `multi-agent-resolver-layer-${props.environment}`,
+      code: lambda.Code.fromAsset(path.join(__dirname, 'streaming-api/lambda-layer'), {
+        bundling: {
+          image: lambda.Runtime.NODEJS_18_X.bundlingImage,
+          user: 'root',
+          command: [
+            'bash', '-c', [
+              'cp -r /asset-input/* /asset-output/',
+              'cd /asset-output',
+              'npm config set cache /tmp/.npm --global',
+              'npm install --production --omit=dev',
+              'mkdir -p nodejs',
+              'mv node_modules nodejs/',
+              'rm -f package.json package-lock.json'
+            ].join(' && ')
+          ],
+          environment: {
+            NPM_CONFIG_CACHE: '/tmp/.npm',
+            NPM_CONFIG_UPDATE_NOTIFIER: 'false'
+          }
+        },
+      }),
+      compatibleRuntimes: [lambda.Runtime.NODEJS_18_X, lambda.Runtime.NODEJS_LATEST],
+      description: 'Dependencies for Multi-Agent GraphQL resolver function',
+    });
+
     // Create Lambda function for GraphQL resolvers
     this.resolverFunction = new lambda.Function(this, 'GraphQLResolverFunction', {
       functionName: `multi-agent-graphql-resolver-${props.environment}`,
-      runtime: lambda.Runtime.NODEJS_LATEST,
+      runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, 'streaming-api/resolver-function')),
-      timeout: cdk.Duration.seconds(30),
+      layers: [resolverLayer],
+      timeout: cdk.Duration.minutes(5), // Allow up to 5 minutes for supervisor agent processing
       memorySize: 512,
       vpc: props.vpc,
       vpcSubnets: {
@@ -234,7 +264,7 @@ export class StreamingApiStack extends cdk.Stack {
         CHAT_SESSIONS_TABLE: this.chatSessionsTable.tableName,
         CHAT_MESSAGES_TABLE: this.chatMessagesTable.tableName,
         AGENT_STATUS_TABLE: this.agentStatusTable.tableName,
-        SUPERVISOR_AGENT_URL: process.env.SUPERVISOR_AGENT_URL || 'http://supervisor-service:8000',
+        SUPERVISOR_AGENT_URL: props.supervisorAgentUrl || process.env.SUPERVISOR_AGENT_URL || 'http://supervisor-service:8000',
         ENVIRONMENT: props.environment,
         LOG_LEVEL: 'INFO',
       },
