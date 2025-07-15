@@ -207,6 +207,14 @@ async function handleMutation(event: AppSyncResolverEvent<any>, context: Context
     case 'sendChat':
       return await handleSendChat(event.arguments);
 
+    case 'sendChatStream':
+      // Handle streaming chat - return async generator results
+      const streamResults = [];
+      for await (const chunk of handleSendChatStream(event.arguments)) {
+        streamResults.push(chunk);
+      }
+      return streamResults;
+
     case 'createSession':
       return await handleCreateSession(event.arguments);
 
@@ -339,6 +347,105 @@ async function callSupervisorAgent(sessionId: string, message: string, userId: s
   }
 }
 
+// Streaming supervisor agent client
+async function* callSupervisorAgentStream(sessionId: string, message: string, userId: string): AsyncGenerator<any, void, unknown> {
+  console.log('=== CALLING SUPERVISOR AGENT STREAM ===');
+  console.log('Supervisor URL:', config.supervisorAgentUrl);
+
+  const requestPayload = {
+    customer_message: message,
+    session_id: sessionId,
+    customer_id: userId,
+    conversation_history: [],
+    context: {}
+  };
+
+  console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
+
+  try {
+    // Create the streaming generator function
+    const streamGenerator = async function* () {
+      console.log('Making streaming HTTP request to supervisor...');
+
+      // Use streaming endpoint if available, otherwise fall back to regular endpoint
+      const streamEndpoint = `${config.supervisorAgentUrl}/process/stream`;
+
+      try {
+        const response = await httpClient.post(streamEndpoint, requestPayload, {
+          responseType: 'stream'
+        });
+
+        console.log('Supervisor streaming response status:', response.status);
+
+        // Parse streaming response
+        let buffer = '';
+        for await (const chunk of response.data) {
+          buffer += chunk.toString();
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const data = JSON.parse(line);
+                console.log('Streaming chunk:', data);
+                yield data;
+              } catch (parseError) {
+                console.log('Failed to parse streaming chunk:', line);
+              }
+            }
+          }
+        }
+
+        // Process any remaining buffer
+        if (buffer.trim()) {
+          try {
+            const data = JSON.parse(buffer);
+            console.log('Final streaming chunk:', data);
+            yield data;
+          } catch (parseError) {
+            console.log('Failed to parse final chunk:', buffer);
+          }
+        }
+
+      } catch (streamError) {
+        console.log('Streaming endpoint not available, falling back to regular call');
+        // Fall back to regular call
+        const result = await httpClient.post(`${config.supervisorAgentUrl}/process`, requestPayload);
+        console.log('Supervisor fallback response:', result.data);
+        yield {
+          type: 'final',
+          data: result.data,
+          session_id: sessionId,
+          timestamp: Date.now()
+        };
+      }
+    };
+
+    // Use the circuit breaker with the streaming generator
+    const generator = await supervisorCircuitBreaker.call(() => Promise.resolve(streamGenerator()));
+    yield* generator;
+
+  } catch (error) {
+    console.log('=== SUPERVISOR AGENT STREAM ERROR ===');
+    console.log('Error details:', error);
+
+    if (axios.isAxiosError(error)) {
+      console.log('Axios error response:', error.response?.data);
+      console.log('Axios error status:', error.response?.status);
+      console.log('Axios error message:', error.message);
+    }
+
+    // Yield error as stream
+    yield {
+      type: 'error',
+      data: { error: 'Unable to process your request at the moment. Please try again later.' },
+      session_id: sessionId,
+      timestamp: Date.now()
+    };
+  }
+}
+
 // Save agent response to DynamoDB
 async function saveAgentResponse(sessionId: string, userId: string, agentResponse: any): Promise<any> {
   console.log('=== SAVING AGENT RESPONSE ===');
@@ -391,6 +498,165 @@ async function saveAgentResponse(sessionId: string, userId: string, agentRespons
 
   console.log('Agent response saved successfully');
   return agentMessage;
+}
+
+// Streaming chat resolver implementation
+async function* handleSendChatStream(args: any): AsyncGenerator<any, void, unknown> {
+  const { input } = args;
+  const { sessionId, message, metadata } = input;
+
+  console.log('=== SEND CHAT STREAM OPERATION ===');
+  console.log('Input args:', JSON.stringify(args, null, 2));
+  logger.info('SendChatStream called', { sessionId, messageLength: message?.length });
+
+  try {
+    // Validate input
+    console.log('Validating input...');
+    if (!sessionId || !message) {
+      console.log('Validation failed: missing sessionId or message');
+      yield createErrorResponse('SessionId and message are required', 'VALIDATION_ERROR');
+      return;
+    }
+    console.log('Input validation passed');
+
+    // Check if session exists
+    console.log('Checking if session exists...');
+    const sessionResult = await docClient.send(new GetCommand({
+      TableName: config.chatSessionsTable,
+      Key: { sessionId }
+    }));
+
+    if (!sessionResult.Item) {
+      console.log('Session not found');
+      yield createErrorResponse('Session not found', 'SESSION_NOT_FOUND');
+      return;
+    }
+    console.log('Session found:', sessionResult.Item);
+
+    // Create and save user message
+    const messageId = uuidv4();
+    const timestamp = new Date().toISOString();
+    const chatMessage = {
+      sessionId,
+      messageId,
+      content: message,
+      sender: 'USER',
+      timestamp,
+      userId: sessionResult.Item.userId,
+      metadata: parseMetadata(metadata)
+    };
+
+    // Save user message to DynamoDB
+    await docClient.send(new PutCommand({
+      TableName: config.chatMessagesTable,
+      Item: chatMessage
+    }));
+
+    // Update session activity
+    await docClient.send(new UpdateCommand({
+      TableName: config.chatSessionsTable,
+      Key: { sessionId },
+      UpdateExpression: 'SET lastActivity = :timestamp, messageCount = messageCount + :inc',
+      ExpressionAttributeValues: {
+        ':timestamp': timestamp,
+        ':inc': 1
+      }
+    }));
+
+    // Yield initial user message confirmation
+    yield createSuccessResponse({
+      type: 'user_message_saved',
+      message: {
+        id: messageId,
+        sessionId,
+        content: message,
+        sender: 'USER',
+        timestamp,
+        metadata: chatMessage.metadata
+      }
+    });
+
+    // Stream from supervisor agent
+    console.log('Starting supervisor agent stream...');
+    let finalAgentResponse = null;
+
+    try {
+      for await (const streamUpdate of callSupervisorAgentStream(sessionId, message, sessionResult.Item.userId)) {
+        // Forward streaming updates to client
+        yield createSuccessResponse({
+          type: 'agent_stream_update',
+          data: streamUpdate,
+          sessionId,
+          timestamp: new Date().toISOString()
+        });
+
+        // Capture final response for saving
+        if (streamUpdate.type === 'final' || streamUpdate.type === 'complete') {
+          finalAgentResponse = streamUpdate.data;
+        }
+      }
+
+      // Save final agent response to DynamoDB
+      if (finalAgentResponse) {
+        const agentMessage = await saveAgentResponse(sessionId, sessionResult.Item.userId, finalAgentResponse);
+
+        // Yield final agent message
+        yield createSuccessResponse({
+          type: 'agent_message_saved',
+          message: {
+            id: agentMessage.messageId,
+            content: agentMessage.content,
+            sender: agentMessage.sender,
+            timestamp: agentMessage.timestamp,
+            agentType: agentMessage.agentType,
+            metadata: agentMessage.metadata
+          }
+        });
+      }
+
+    } catch (supervisorError) {
+      console.log('Supervisor agent streaming failed:', supervisorError);
+      logger.error('Supervisor agent streaming error', supervisorError);
+
+      // Save error message as agent response
+      const errorMessage = supervisorError instanceof Error ? supervisorError.message : 'Unable to process your request at the moment. Please try again later.';
+
+      const errorAgentMessage = await saveAgentResponse(sessionId, sessionResult.Item.userId, {
+        response: errorMessage,
+        agentType: 'SYSTEM',
+        metadata: { error: true, originalError: supervisorError instanceof Error ? supervisorError.message : 'Unknown error' }
+      });
+
+      // Yield error response
+      yield createSuccessResponse({
+        type: 'agent_error',
+        message: {
+          id: errorAgentMessage.messageId,
+          content: errorAgentMessage.content,
+          sender: errorAgentMessage.sender,
+          timestamp: errorAgentMessage.timestamp,
+          agentType: errorAgentMessage.agentType,
+          metadata: errorAgentMessage.metadata
+        }
+      });
+    }
+
+    // Yield completion marker
+    yield createSuccessResponse({
+      type: 'stream_complete',
+      sessionId,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.info('Streaming message processing completed', { messageId, sessionId });
+
+  } catch (error) {
+    console.log('=== SEND CHAT STREAM ERROR ===');
+    console.log('Error details:', error);
+    logger.error('Error in sendChatStream', error);
+
+    yield createErrorResponse('Failed to process streaming chat message', 'SEND_CHAT_STREAM_ERROR');
+  }
 }
 
 // Chat resolver implementations
