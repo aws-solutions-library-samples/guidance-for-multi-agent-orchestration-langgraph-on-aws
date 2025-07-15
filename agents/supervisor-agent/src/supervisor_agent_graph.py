@@ -7,6 +7,7 @@ intent analysis, agent delegation, and response synthesis using LangGraph.
 
 import json
 import logging
+import os
 import time
 from typing import Dict, List, Optional, Any, Annotated, TypedDict, Literal
 from enum import Enum
@@ -106,15 +107,32 @@ class SupervisorAgent:
     def _initialize_llm(self) -> ChatBedrock:
         """Initialize the AWS Bedrock LLM."""
         try:
-            llm = ChatBedrock(
-                model_id=config.bedrock_model_id,
-                model_kwargs={
+            # Determine if we should use credential profile (for local development)
+            use_profile = not os.getenv(
+                "AWS_EXECUTION_ENV"
+            )  # Not running in AWS Lambda/ECS
+
+            llm_kwargs = {
+                "model_id": config.bedrock_model_id,
+                "model_kwargs": {
                     "temperature": config.bedrock_temperature,
                     "max_tokens": config.bedrock_max_tokens,
                 },
-                region_name=config.aws_default_region,
-                # credentials_profile_name=config.aws_credentials_profile
-            )
+                "region_name": config.aws_default_region,
+            }
+
+            # Add credential profile for local development
+            if use_profile:
+                llm_kwargs["credentials_profile_name"] = config.aws_credentials_profile
+                logger.info(
+                    f"Using AWS credential profile: {config.aws_credentials_profile}"
+                )
+            else:
+                logger.info(
+                    "Using default AWS credential chain (IAM roles, environment variables, etc.)"
+                )
+
+            llm = ChatBedrock(**llm_kwargs)
             logger.info("Successfully initialized Bedrock LLM")
             return llm
         except Exception as e:
@@ -309,6 +327,90 @@ class SupervisorAgent:
                 },
             )
 
+    async def _generic_agent_node_stream(self, state: GraphState, agent_type: str):
+        """
+        Generic agent node that streams from HTTP sub-agent.
+
+        Args:
+            state: Current graph state
+            agent_type: Type of agent to call
+
+        Yields:
+            Streaming updates from the sub-agent
+        """
+        logger.info(f"Streaming from {agent_type} agent")
+
+        # Prepare agent request
+        agent_request = AgentRequest(
+            customer_message=state["customer_message"],
+            session_id=state["session_id"],
+            customer_id=state.get("customer_id"),
+            conversation_history=state.get("conversation_history"),
+            context=state.get("context"),
+            max_response_length=self.max_response_words,
+        )
+
+        # Stream from agent via HTTP
+        try:
+            final_response = None
+            async for update in self.client.call_agent_stream(agent_type, agent_request):
+                # Forward sub-agent updates with supervisor context
+                yield {
+                    "type": "sub_agent_update",
+                    "agent_type": agent_type,
+                    "data": update,
+                    "session_id": state["session_id"],
+                    "timestamp": time.time()
+                }
+                
+                # Capture final response for state update
+                if update.get("type") == "complete":
+                    # Get the final response from the completed stream
+                    final_response = update.get("data", {})
+
+            # Update state with final response
+            agent_responses = state.get("agent_responses", {})
+            agent_responses[agent_type] = final_response or {"response": f"{agent_type} completed"}
+
+            # Remove this agent from agents_to_call
+            agents_to_call = state.get("agents_to_call", [])
+            if agent_type in agents_to_call:
+                agents_to_call.remove(agent_type)
+
+            # Yield final state update
+            yield {
+                "type": "agent_completed",
+                "agent_type": agent_type,
+                "data": {
+                    "agent_responses": agent_responses,
+                    "agents_to_call": agents_to_call,
+                    "next_agent": self._get_next_agent(agents_to_call)
+                },
+                "session_id": state["session_id"],
+                "timestamp": time.time()
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to stream from {agent_type} agent: {e}")
+
+            # Continue to next agent or synthesizer on error
+            agents_to_call = state.get("agents_to_call", [])
+            if agent_type in agents_to_call:
+                agents_to_call.remove(agent_type)
+
+            # Yield error update
+            yield {
+                "type": "agent_error",
+                "agent_type": agent_type,
+                "data": {
+                    "error": str(e),
+                    "agents_to_call": agents_to_call,
+                    "next_agent": self._get_next_agent(agents_to_call)
+                },
+                "session_id": state["session_id"],
+                "timestamp": time.time()
+            }
+
     async def _synthesizer_node(self, state: GraphState) -> Dict[str, Any]:
         """
         Synthesizer node that combines all agent responses.
@@ -353,6 +455,103 @@ class SupervisorAgent:
             return agents_to_call[0]
         return AgentNode.SYNTHESIZER
 
+    async def process_request_stream(self, request: SupervisorRequest):
+        """
+        Process a customer support request using the LangGraph with streaming support.
+
+        Args:
+            request: Customer support request
+
+        Yields:
+            Streaming updates from the graph execution
+        """
+        try:
+            # Prepare initial state
+            initial_state = {
+                "customer_message": request.customer_message,
+                "session_id": request.session_id,
+                "customer_id": request.customer_id,
+                "conversation_history": request.conversation_history,
+                "context": request.context,
+                "messages": [],
+            }
+
+            # Stream the graph execution with updates mode
+            async for chunk in self.graph.astream(initial_state, stream_mode="updates"):
+                # Yield progress updates
+                yield {
+                    "type": "progress",
+                    "data": chunk,
+                    "session_id": request.session_id,
+                    "timestamp": time.time(),
+                }
+
+        except Exception as e:
+            logger.error(f"Error in streaming request: {e}")
+            yield {
+                "type": "error",
+                "data": {"error": str(e)},
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+
+    async def process_request_stream_tokens(self, request: SupervisorRequest):
+        """
+        Process a customer support request with LLM token streaming support.
+
+        Args:
+            request: Customer support request
+
+        Yields:
+            Streaming LLM tokens and progress updates
+        """
+        try:
+            # Prepare initial state
+            initial_state = {
+                "customer_message": request.customer_message,
+                "session_id": request.session_id,
+                "customer_id": request.customer_id,
+                "conversation_history": request.conversation_history,
+                "context": request.context,
+                "messages": [],
+            }
+
+            # Stream with multiple modes: updates for progress, messages for LLM tokens
+            async for stream_type, chunk in self.graph.astream(
+                initial_state, stream_mode=["updates", "messages"]
+            ):
+                if stream_type == "updates":
+                    # Yield progress updates
+                    yield {
+                        "type": "progress",
+                        "data": chunk,
+                        "session_id": request.session_id,
+                        "timestamp": time.time(),
+                    }
+                elif stream_type == "messages":
+                    # Yield LLM token streams
+                    message_chunk, metadata = chunk
+                    if message_chunk.content:
+                        yield {
+                            "type": "token",
+                            "data": {
+                                "content": message_chunk.content,
+                                "node": metadata.get("langgraph_node", "unknown"),
+                                "metadata": metadata,
+                            },
+                            "session_id": request.session_id,
+                            "timestamp": time.time(),
+                        }
+
+        except Exception as e:
+            logger.error(f"Error in token streaming request: {e}")
+            yield {
+                "type": "error",
+                "data": {"error": str(e)},
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+
     async def process_request(self, request: SupervisorRequest) -> Dict[str, Any]:
         """
         Process a customer support request using the LangGraph.
@@ -374,8 +573,10 @@ class SupervisorAgent:
                 "messages": [],
             }
 
-            # Run the graph
-            final_state = await self.graph.ainvoke(initial_state)
+            # Run the graph and get final state
+            final_state = None
+            async for chunk in self.graph.astream(initial_state, stream_mode="values"):
+                final_state = chunk
 
             # Helper function to format agent responses for validation
             def format_agent_response(

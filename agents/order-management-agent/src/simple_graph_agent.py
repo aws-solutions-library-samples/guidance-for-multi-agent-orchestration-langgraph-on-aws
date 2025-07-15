@@ -7,6 +7,7 @@ automatic tool execution.
 
 import logging
 import time
+import os
 
 from langchain_aws import ChatBedrockConverse
 from langchain_core.tools import tool
@@ -57,12 +58,35 @@ class SimpleGraphOrderAgent:
     def _initialize_llm(self) -> ChatBedrockConverse:
         """Initialize the AWS Bedrock LLM."""
         try:
-            llm = ChatBedrockConverse(
-                model_id=config.bedrock_model_id,
-                temperature=config.bedrock_temperature,
-                region_name=config.aws_default_region,
-                # credentials_profile_name=config.aws_credentials_profile
-            )
+            # llm = ChatBedrockConverse(
+            #     model_id=config.bedrock_model_id,
+            #     temperature=config.bedrock_temperature,
+            #     region_name=config.aws_default_region,
+            #     # credentials_profile_name=config.aws_credentials_profile
+            # )
+            use_profile = not os.getenv(
+                "AWS_EXECUTION_ENV"
+            )  # Not running in AWS Lambda/ECS
+
+            llm_kwargs = {
+                "model_id": config.bedrock_model_id,
+                "temperature": config.bedrock_temperature,
+                "max_tokens": config.bedrock_max_tokens,
+                "region_name": config.aws_default_region,
+            }
+
+            # Add credential profile for local development
+            if use_profile:
+                llm_kwargs["credentials_profile_name"] = config.aws_credentials_profile
+                logger.info(
+                    f"Using AWS credential profile: {config.aws_credentials_profile}"
+                )
+            else:
+                logger.info(
+                    "Using default AWS credential chain (IAM roles, environment variables, etc.)"
+                )
+
+            llm = ChatBedrockConverse(**llm_kwargs)
             logger.info("Successfully initialized Bedrock LLM")
             return llm
         except Exception as e:
@@ -313,6 +337,269 @@ class SimpleGraphOrderAgent:
 
         return workflow.compile()
 
+    def _serialize_chunk_for_streaming(self, chunk):
+        """
+        Serialize LangGraph chunk to be JSON-compatible for streaming.
+
+        Args:
+            chunk: Raw LangGraph chunk data
+
+        Returns:
+            JSON-serializable dictionary
+        """
+        serialized = {}
+
+        for node_name, node_data in chunk.items():
+            if isinstance(node_data, dict):
+                serialized_node = {}
+                for key, value in node_data.items():
+                    if key == "messages" and isinstance(value, list):
+                        # Serialize message objects
+                        serialized_messages = []
+                        for msg in value:
+                            if hasattr(msg, "content") and hasattr(msg, "type"):
+                                # LangChain message object
+                                msg_dict = {
+                                    "type": getattr(msg, "type", "unknown"),
+                                    "content": self._serialize_message_content(
+                                        msg.content
+                                    ),
+                                    "id": getattr(msg, "id", None),
+                                }
+                                # Add tool calls if present
+                                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                                    msg_dict["tool_calls"] = [
+                                        {
+                                            "name": tc.get("name", ""),
+                                            "args": tc.get("args", {}),
+                                            "id": tc.get("id", ""),
+                                            "type": tc.get("type", "tool_call"),
+                                        }
+                                        for tc in msg.tool_calls
+                                    ]
+                                serialized_messages.append(msg_dict)
+                            elif isinstance(msg, dict):
+                                # Already a dictionary
+                                serialized_messages.append(msg)
+                            else:
+                                # Convert to string representation
+                                serialized_messages.append(
+                                    {"type": "unknown", "content": str(msg)}
+                                )
+                        serialized_node[key] = serialized_messages
+                    elif isinstance(value, (str, int, float, bool, type(None))):
+                        # Basic types are already serializable
+                        serialized_node[key] = value
+                    elif isinstance(value, (list, dict)):
+                        # Try to serialize as-is, fallback to string
+                        try:
+                            import json
+
+                            json.dumps(value)  # Test if serializable
+                            serialized_node[key] = value
+                        except (TypeError, ValueError):
+                            serialized_node[key] = str(value)
+                    else:
+                        # Convert complex objects to string
+                        serialized_node[key] = str(value)
+                serialized[node_name] = serialized_node
+            else:
+                # Non-dict node data, convert to string
+                serialized[node_name] = str(node_data)
+
+        return serialized
+
+    def _serialize_message_content(self, content):
+        """
+        Serialize message content which can be string or list of content blocks.
+
+        Args:
+            content: Message content (string or list)
+
+        Returns:
+            Serializable content
+        """
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, list):
+            # Handle content blocks (like tool use, text, etc.)
+            serialized_content = []
+            for block in content:
+                if isinstance(block, dict):
+                    # Already serializable
+                    serialized_content.append(block)
+                else:
+                    # Convert to dict representation
+                    if hasattr(block, "type") and hasattr(block, "text"):
+                        serialized_content.append(
+                            {"type": block.type, "text": block.text}
+                        )
+                    else:
+                        serialized_content.append(str(block))
+            return serialized_content
+        else:
+            return str(content)
+
+    def _extract_final_response(self, final_state):
+        """
+        Extract the final response from the graph state.
+
+        Args:
+            final_state: Final state from graph execution
+
+        Returns:
+            String response content
+        """
+        if not final_state or "messages" not in final_state:
+            return "No response generated"
+
+        messages = final_state["messages"]
+        if not messages:
+            return "No messages in response"
+
+        # Get the last message
+        final_message = messages[-1]
+
+        # Extract content from the message
+        if hasattr(final_message, "content"):
+            content = final_message.content
+            # Handle different content formats
+            if isinstance(content, str):
+                return content
+            elif isinstance(content, list):
+                # Extract text from content blocks, ignoring tool_use blocks
+                text_parts = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text_parts.append(block.get("text", ""))
+                    elif hasattr(block, "text"):
+                        text_parts.append(block.text)
+                return " ".join(text_parts) if text_parts else str(content)
+            else:
+                return str(content)
+        elif isinstance(final_message, dict) and "content" in final_message:
+            return str(final_message["content"])
+        else:
+            return str(final_message)
+
+    async def process_request_stream(self, request: AgentRequest):
+        """
+        Process a customer order-related request with streaming support.
+
+        Args:
+            request: Customer request
+
+        Yields:
+            Streaming updates from the graph execution
+        """
+        try:
+            logger.info(
+                f"Processing streaming order management request for session {request.session_id}"
+            )
+
+            # Prepare the customer message
+            customer_message = request.customer_message
+            if request.customer_id:
+                customer_message += f" (Customer ID: {request.customer_id})"
+
+            # Create initial state
+            initial_state = {
+                "messages": [HumanMessage(content=customer_message)],
+                "session_id": request.session_id,
+                "customer_id": request.customer_id or "",
+                "processing_time": 0.0,
+            }
+
+            # Stream the graph execution with updates mode
+            async for chunk in self.graph.astream(initial_state, stream_mode="updates"):
+                # Serialize the chunk to be JSON-compatible
+                serialized_chunk = self._serialize_chunk_for_streaming(chunk)
+                yield {
+                    "type": "progress",
+                    "agent_type": self.agent_type.value,
+                    "data": serialized_chunk,
+                    "session_id": request.session_id,
+                    "timestamp": time.time(),
+                }
+
+        except Exception as e:
+            logger.error(f"Error in streaming order management request: {e}")
+            yield {
+                "type": "error",
+                "agent_type": self.agent_type.value,
+                "data": {"error": str(e)},
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+
+    async def process_request_stream_tokens(self, request: AgentRequest):
+        """
+        Process a customer order-related request with LLM token streaming support.
+
+        Args:
+            request: Customer request
+
+        Yields:
+            Streaming LLM tokens and progress updates
+        """
+        try:
+            logger.info(
+                f"Processing token streaming order management request for session {request.session_id}"
+            )
+
+            # Prepare the customer message
+            customer_message = request.customer_message
+            if request.customer_id:
+                customer_message += f" (Customer ID: {request.customer_id})"
+
+            # Create initial state
+            initial_state = {
+                "messages": [HumanMessage(content=customer_message)],
+                "session_id": request.session_id,
+                "customer_id": request.customer_id or "",
+                "processing_time": 0.0,
+            }
+
+            # Stream with multiple modes: updates for progress, messages for LLM tokens
+            async for stream_type, chunk in self.graph.astream(
+                initial_state, stream_mode=["updates", "messages"]
+            ):
+                if stream_type == "updates":
+                    # Serialize the chunk to be JSON-compatible
+                    serialized_chunk = self._serialize_chunk_for_streaming(chunk)
+                    yield {
+                        "type": "progress",
+                        "agent_type": self.agent_type.value,
+                        "data": serialized_chunk,
+                        "session_id": request.session_id,
+                        "timestamp": time.time(),
+                    }
+                elif stream_type == "messages":
+                    # Yield LLM token streams
+                    message_chunk, metadata = chunk
+                    if message_chunk.content:
+                        yield {
+                            "type": "token",
+                            "agent_type": self.agent_type.value,
+                            "data": {
+                                "content": message_chunk.content,
+                                "node": metadata.get("langgraph_node", "unknown"),
+                                "metadata": metadata,  # LangGraph metadata is already serializable
+                            },
+                            "session_id": request.session_id,
+                            "timestamp": time.time(),
+                        }
+
+        except Exception as e:
+            logger.error(f"Error in token streaming order management request: {e}")
+            yield {
+                "type": "error",
+                "agent_type": self.agent_type.value,
+                "data": {"error": str(e)},
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+
     async def process_request(self, request: AgentRequest) -> AgentResponse:
         """
         Process a customer order-related request using the StateGraph.
@@ -343,13 +630,13 @@ class SimpleGraphOrderAgent:
                 "processing_time": 0.0,
             }
 
-            # Execute the graph
-            final_state = await self.graph.ainvoke(initial_state)
+            # Execute the graph and get final state
+            final_state = None
+            async for chunk in self.graph.astream(initial_state, stream_mode="values"):
+                final_state = chunk
 
-            # Extract the final response
-            messages = final_state["messages"]
-            final_message = messages[-1]
-            response_text = final_message.content
+            # Extract the final response using our improved method
+            response_text = self._extract_final_response(final_state)
 
             # Extract tool calls for response metadata
             # tool_calls = self._extract_tool_calls_from_messages(messages)

@@ -10,6 +10,8 @@ import asyncio
 import httpx
 import os
 import boto3
+import json
+import time
 from typing import Dict, List, Optional, Any
 
 from shared.models import AgentRequest, AgentResponse, AgentType
@@ -43,11 +45,11 @@ class SubAgentClient:
                 "endpoint": "/recommend",
             },
             "troubleshooting": {
-                "url": "http://localhost:8004",
+                "url": "http://localhost:8003",
                 "endpoint": "/troubleshoot",
             },
             "personalization": {
-                "url": "http://localhost:8003",
+                "url": "http://localhost:8004",
                 "endpoint": "/personalize",
             },
         }
@@ -284,6 +286,179 @@ class SubAgentClient:
             raise AgentCommunicationError(
                 f"Failed to communicate with {agent_type} agent: {e}"
             )
+
+    async def call_agent_stream(self, agent_type: str, request: AgentRequest):
+        """
+        Stream responses from a specific agent service.
+
+        Args:
+            agent_type: Type of agent to call
+            request: Request to send to the agent
+
+        Yields:
+            Streaming updates from the agent
+
+        Raises:
+            AgentCommunicationError: If communication fails
+        """
+        if agent_type not in self.agent_configs:
+            raise AgentCommunicationError(f"Unknown agent type: {agent_type}")
+
+        agent_config = self.agent_configs[agent_type]
+        agent_url = agent_config["url"]
+        stream_endpoint = f"{agent_url}/process/stream"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                logger.info(f"Streaming from {agent_type} agent at {stream_endpoint}")
+
+                # Convert AgentRequest to agent-specific request format
+                agent_request_data = self._convert_to_agent_request(agent_type, request)
+
+                async with client.stream(
+                    "POST",
+                    stream_endpoint,
+                    json=agent_request_data,
+                    headers={"Accept": "application/x-ndjson"},
+                ) as response:
+                    if response.status_code != 200:
+                        error_text = await response.aread()
+                        logger.error(
+                            f"Agent {agent_type} streaming failed with status {response.status_code}: {error_text.decode()}"
+                        )
+                        raise AgentCommunicationError(
+                            f"Agent {agent_type} streaming failed: {response.status_code}"
+                        )
+
+                    # Process streaming response line by line
+                    buffer = ""
+                    async for chunk in response.aiter_bytes():
+                        buffer += chunk.decode()
+                        lines = buffer.split("\n")
+                        buffer = lines.pop()  # Keep incomplete line in buffer
+
+                        for line in lines:
+                            if line.strip():
+                                try:
+                                    data = json.loads(line)
+                                    logger.debug(
+                                        f"Received stream update from {agent_type}: {data.get('type', 'unknown')}"
+                                    )
+                                    yield data
+                                except json.JSONDecodeError as e:
+                                    logger.warning(
+                                        f"Failed to parse streaming data from {agent_type}: {line}"
+                                    )
+                                    continue
+
+                    # Process any remaining buffer
+                    if buffer.strip():
+                        try:
+                            data = json.loads(buffer)
+                            yield data
+                        except json.JSONDecodeError:
+                            logger.warning(
+                                f"Failed to parse final buffer from {agent_type}: {buffer}"
+                            )
+
+        except Exception as e:
+            logger.error(f"Failed to stream from {agent_type} agent: {e}")
+            # Yield error in stream format
+            yield {
+                "type": "error",
+                "agent_type": agent_type,
+                "data": {"error": str(e)},
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+
+    async def call_agent_stream_tokens(self, agent_type: str, request: AgentRequest):
+        """
+        Stream tokens from a specific agent service.
+
+        Args:
+            agent_type: Type of agent to call
+            request: Request to send to the agent
+
+        Yields:
+            Streaming token updates from the agent
+
+        Raises:
+            AgentCommunicationError: If communication fails
+        """
+        if agent_type not in self.agent_configs:
+            raise AgentCommunicationError(f"Unknown agent type: {agent_type}")
+
+        agent_config = self.agent_configs[agent_type]
+        agent_url = agent_config["url"]
+        token_stream_endpoint = f"{agent_url}/process/stream/tokens"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                logger.info(
+                    f"Token streaming from {agent_type} agent at {token_stream_endpoint}"
+                )
+
+                # Convert AgentRequest to agent-specific request format
+                agent_request_data = self._convert_to_agent_request(agent_type, request)
+
+                async with client.stream(
+                    "POST",
+                    token_stream_endpoint,
+                    json=agent_request_data,
+                    headers={"Accept": "application/x-ndjson"},
+                ) as response:
+                    if response.status_code != 200:
+                        error_text = await response.aread()
+                        logger.error(
+                            f"Agent {agent_type} token streaming failed with status {response.status_code}: {error_text.decode()}"
+                        )
+                        raise AgentCommunicationError(
+                            f"Agent {agent_type} token streaming failed: {response.status_code}"
+                        )
+
+                    # Process streaming response line by line
+                    buffer = ""
+                    async for chunk in response.aiter_bytes():
+                        buffer += chunk.decode()
+                        lines = buffer.split("\n")
+                        buffer = lines.pop()  # Keep incomplete line in buffer
+
+                        for line in lines:
+                            if line.strip():
+                                try:
+                                    data = json.loads(line)
+                                    if data.get("type") == "token":
+                                        logger.debug(
+                                            f"Received token from {agent_type}: {data.get('data', {}).get('content', '')[:20]}..."
+                                        )
+                                    yield data
+                                except json.JSONDecodeError as e:
+                                    logger.warning(
+                                        f"Failed to parse token streaming data from {agent_type}: {line}"
+                                    )
+                                    continue
+
+                    # Process any remaining buffer
+                    if buffer.strip():
+                        try:
+                            data = json.loads(buffer)
+                            yield data
+                        except json.JSONDecodeError:
+                            logger.warning(
+                                f"Failed to parse final token buffer from {agent_type}: {buffer}"
+                            )
+
+        except Exception as e:
+            logger.error(f"Failed to token stream from {agent_type} agent: {e}")
+            # Yield error in stream format
+            yield {
+                "type": "error",
+                "agent_type": agent_type,
+                "data": {"error": str(e)},
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
 
     async def call_multiple_agents(
         self, agent_requests: List[tuple[str, AgentRequest]]

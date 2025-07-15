@@ -3,6 +3,7 @@ Personalization Agent using LangGraph StateGraph with correct pattern.
 """
 
 import logging
+import os
 from typing import Dict, Any, List, Optional, TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -82,12 +83,35 @@ class PersonalizationAgent:
     def _initialize_llm(self) -> ChatBedrockConverse:
         """Initialize the AWS Bedrock LLM."""
         try:
-            llm = ChatBedrockConverse(
-                model_id=config.bedrock_model_id,
-                temperature=config.bedrock_temperature,
-                region_name=config.aws_default_region,
-                # credentials_profile_name=config.aws_credentials_profile
-            )
+            # llm = ChatBedrockConverse(
+            #     model_id=config.bedrock_model_id,
+            #     temperature=config.bedrock_temperature,
+            #     region_name=config.aws_default_region,
+            #     # credentials_profile_name=config.aws_credentials_profile
+            # )
+            use_profile = not os.getenv(
+                "AWS_EXECUTION_ENV"
+            )  # Not running in AWS Lambda/ECS
+
+            llm_kwargs = {
+                "model_id": config.bedrock_model_id,
+                "temperature": config.bedrock_temperature,
+                "max_tokens": config.bedrock_max_tokens,
+                "region_name": config.aws_default_region,
+            }
+
+            # Add credential profile for local development
+            if use_profile:
+                llm_kwargs["credentials_profile_name"] = config.aws_credentials_profile
+                logger.info(
+                    f"Using AWS credential profile: {config.aws_credentials_profile}"
+                )
+            else:
+                logger.info(
+                    "Using default AWS credential chain (IAM roles, environment variables, etc.)"
+                )
+
+            llm = ChatBedrockConverse(**llm_kwargs)
             logger.info("Successfully initialized Bedrock LLM")
             return llm
         except Exception as e:

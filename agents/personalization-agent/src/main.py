@@ -18,8 +18,7 @@ from database import initialize_database
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -31,25 +30,25 @@ agent = None
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     global agent
-    
+
     # Startup
     logger.info("Starting Personalization Agent service...")
-    
+
     try:
         # Initialize database
         await initialize_database()
         logger.info("Database initialized successfully")
-        
+
         # Initialize agent
         agent = PersonalizationAgent()
         logger.info("Personalization Agent initialized successfully")
-        
+
     except Exception as e:
         logger.error(f"Failed to initialize service: {e}")
         raise
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Personalization Agent service...")
 
@@ -59,7 +58,7 @@ app = FastAPI(
     title="Personalization Agent",
     description="AI-powered personalization service for customer support system",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -74,6 +73,7 @@ app.add_middleware(
 
 class HealthResponse(BaseModel):
     """Health check response model."""
+
     status: str
     service: str
     version: str
@@ -83,9 +83,7 @@ class HealthResponse(BaseModel):
 async def health_check():
     """Health check endpoint."""
     return HealthResponse(
-        status="healthy",
-        service="personalization-agent",
-        version="1.0.0"
+        status="healthy", service="personalization-agent", version="1.0.0"
     )
 
 
@@ -95,14 +93,18 @@ async def get_personalization(request: PersonalizationRequest):
     try:
         if agent is None:
             raise HTTPException(status_code=503, detail="Service not ready")
-        
-        logger.info(f"Processing personalization request for customer: {request.customer_id}")
-        
+
+        logger.info(
+            f"Processing personalization request for customer: {request.customer_id}"
+        )
+
         response = await agent.process_request(request)
-        
-        logger.info(f"Generated personalization insights for customer {request.customer_id}")
+
+        logger.info(
+            f"Generated personalization insights for customer {request.customer_id}"
+        )
         return response
-        
+
     except Exception as e:
         logger.error(f"Error processing personalization request: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -118,8 +120,8 @@ async def root():
         "endpoints": {
             "health": "/health",
             "personalize": "/personalize",
-            "docs": "/docs"
-        }
+            "docs": "/docs",
+        },
     }
 
 
@@ -127,15 +129,15 @@ def main():
     """Main function to run the service."""
     port = int(os.getenv("PORT", "8004"))
     host = os.getenv("HOST", "0.0.0.0")
-    
+
     logger.info(f"Starting Personalization Agent on {host}:{port}")
-    
+
     uvicorn.run(
         "main:app",
         host=host,
         port=port,
         reload=os.getenv("ENVIRONMENT") == "development",
-        log_level="info"
+        log_level="info",
     )
 
 

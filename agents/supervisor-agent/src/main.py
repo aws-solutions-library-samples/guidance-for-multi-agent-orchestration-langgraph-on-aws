@@ -129,6 +129,152 @@ async def process_request(request: SupervisorRequest) -> SupervisorResponse:
         )
 
 
+@app.post("/process/stream")
+async def process_request_stream(request: SupervisorRequest):
+    """
+    Streaming chat endpoint for real-time customer interactions.
+
+    Args:
+        request: Customer support request
+
+    Returns:
+        Streaming response with real-time updates
+
+    Raises:
+        HTTPException: If processing fails
+    """
+    if not supervisor_agent:
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+    try:
+        logger.info(f"Processing streaming supervisor request for session {request.session_id}")
+
+        # Validate request
+        if not request.customer_message.strip():
+            raise HTTPException(
+                status_code=400, detail="Customer message cannot be empty"
+            )
+
+        # Import streaming response
+        from fastapi.responses import StreamingResponse
+        import json
+
+        async def generate_stream():
+            """Generate streaming response."""
+            try:
+                async for update in supervisor_agent.process_request_stream(request):
+                    # Convert update to JSON and add newline for streaming
+                    yield json.dumps(update) + '\n'
+                    
+                # Send final completion marker
+                yield json.dumps({
+                    "type": "complete",
+                    "session_id": request.session_id,
+                    "timestamp": time.time()
+                }) + '\n'
+                
+            except Exception as e:
+                logger.error(f"Error in streaming generation: {e}")
+                # Send error in stream format
+                yield json.dumps({
+                    "type": "error",
+                    "data": {"error": str(e)},
+                    "session_id": request.session_id,
+                    "timestamp": time.time()
+                }) + '\n'
+
+        return StreamingResponse(
+            generate_stream(),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to process streaming chat request: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process streaming request: {str(e)}"
+        )
+
+
+@app.post("/process/stream/tokens")
+async def process_request_stream_tokens(request: SupervisorRequest):
+    """
+    Token-level streaming chat endpoint for real-time LLM token streaming.
+
+    Args:
+        request: Customer support request
+
+    Returns:
+        Streaming response with LLM tokens and progress updates
+
+    Raises:
+        HTTPException: If processing fails
+    """
+    if not supervisor_agent:
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+    try:
+        logger.info(f"Processing token streaming supervisor request for session {request.session_id}")
+
+        # Validate request
+        if not request.customer_message.strip():
+            raise HTTPException(
+                status_code=400, detail="Customer message cannot be empty"
+            )
+
+        # Import streaming response
+        from fastapi.responses import StreamingResponse
+        import json
+
+        async def generate_token_stream():
+            """Generate token-level streaming response."""
+            try:
+                async for update in supervisor_agent.process_request_stream_tokens(request):
+                    # Convert update to JSON and add newline for streaming
+                    yield json.dumps(update) + '\n'
+                    
+                # Send final completion marker
+                yield json.dumps({
+                    "type": "complete",
+                    "session_id": request.session_id,
+                    "timestamp": time.time()
+                }) + '\n'
+                
+            except Exception as e:
+                logger.error(f"Error in token streaming generation: {e}")
+                # Send error in stream format
+                yield json.dumps({
+                    "type": "error",
+                    "data": {"error": str(e)},
+                    "session_id": request.session_id,
+                    "timestamp": time.time()
+                }) + '\n'
+
+        return StreamingResponse(
+            generate_token_stream(),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to process token streaming chat request: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process token streaming request: {str(e)}"
+        )
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -179,6 +325,8 @@ async def root():
         "description": "Main coordinator for multi-agent customer support system",
         "endpoints": {
             "process": "/process",
+            "process_stream": "/process/stream",
+            "process_stream_tokens": "/process/stream/tokens",
             "health": "/health",
             "agents_status": "/agents/status",
             "docs": "/docs",

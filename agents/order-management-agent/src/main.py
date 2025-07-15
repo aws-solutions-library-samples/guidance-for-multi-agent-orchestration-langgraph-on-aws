@@ -5,6 +5,7 @@ FastAPI service for the order management agent.
 import logging
 import os
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
@@ -126,6 +127,157 @@ async def process_request(request: AgentRequest):
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
+@app.post("/process/stream")
+async def process_request_stream(request: AgentRequest):
+    """
+    Streaming endpoint for real-time order management processing.
+
+    Args:
+        request: Customer order request
+
+    Returns:
+        Streaming response with real-time updates
+
+    Raises:
+        HTTPException: If processing fails
+    """
+    if agent is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    try:
+        logger.info(f"Processing streaming order management request for session {request.session_id}")
+
+        # Validate request
+        if not request.customer_message.strip():
+            raise HTTPException(
+                status_code=400, detail="Customer message cannot be empty"
+            )
+
+        # Import streaming response
+        from fastapi.responses import StreamingResponse
+        import json
+
+        async def generate_stream():
+            """Generate streaming response."""
+            try:
+                async for update in agent.process_request_stream(request):
+                    # Convert update to JSON and add newline for streaming
+                    yield json.dumps(update) + '\n'
+                    
+                # Send final completion marker
+                yield json.dumps({
+                    "type": "complete",
+                    "agent_type": "order_management",
+                    "session_id": request.session_id,
+                    "timestamp": time.time()
+                }) + '\n'
+                
+            except Exception as e:
+                logger.error(f"Error in streaming generation: {e}")
+                # Send error in stream format
+                yield json.dumps({
+                    "type": "error",
+                    "agent_type": "order_management",
+                    "data": {"error": str(e)},
+                    "session_id": request.session_id,
+                    "timestamp": time.time()
+                }) + '\n'
+
+        return StreamingResponse(
+            generate_stream(),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to process streaming order management request: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process streaming request: {str(e)}"
+        )
+
+
+@app.post("/process/stream/tokens")
+async def process_request_stream_tokens(request: AgentRequest):
+    """
+    Token-level streaming endpoint for real-time LLM token streaming.
+
+    Args:
+        request: Customer order request
+
+    Returns:
+        Streaming response with LLM tokens and progress updates
+
+    Raises:
+        HTTPException: If processing fails
+    """
+    if agent is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    try:
+        logger.info(f"Processing token streaming order management request for session {request.session_id}")
+
+        # Validate request
+        if not request.customer_message.strip():
+            raise HTTPException(
+                status_code=400, detail="Customer message cannot be empty"
+            )
+
+        # Import streaming response
+        from fastapi.responses import StreamingResponse
+        import json
+        import time
+
+        async def generate_token_stream():
+            """Generate token-level streaming response."""
+            try:
+                async for update in agent.process_request_stream_tokens(request):
+                    # Convert update to JSON and add newline for streaming
+                    yield json.dumps(update) + '\n'
+                    
+                # Send final completion marker
+                yield json.dumps({
+                    "type": "complete",
+                    "agent_type": "order_management",
+                    "session_id": request.session_id,
+                    "timestamp": time.time()
+                }) + '\n'
+                
+            except Exception as e:
+                logger.error(f"Error in token streaming generation: {e}")
+                # Send error in stream format
+                yield json.dumps({
+                    "type": "error",
+                    "agent_type": "order_management",
+                    "data": {"error": str(e)},
+                    "session_id": request.session_id,
+                    "timestamp": time.time()
+                }) + '\n'
+
+        return StreamingResponse(
+            generate_token_stream(),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to process token streaming order management request: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process token streaming request: {str(e)}"
+        )
+
+
 @app.get("/")
 async def root():
     """Root endpoint."""
@@ -133,7 +285,14 @@ async def root():
         "service": "Order Management Agent",
         "status": "running",
         "version": "1.0.0",
-        "agent_type": "order_management"
+        "agent_type": "order_management",
+        "endpoints": {
+            "process": "/process",
+            "process_stream": "/process/stream",
+            "process_stream_tokens": "/process/stream/tokens",
+            "health": "/health",
+            "info": "/info"
+        }
     }
 
 
