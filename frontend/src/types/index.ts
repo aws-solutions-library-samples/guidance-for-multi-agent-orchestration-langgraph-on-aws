@@ -39,7 +39,6 @@ export interface ChatMessage {
   sessionId: string;
   content: string;
   sender: MessageSender;
-  timestamp: Date;
   agentResponse?: AgentResponse;
   metadata?: Record<string, any>;
 }

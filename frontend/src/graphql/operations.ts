@@ -115,7 +115,12 @@ export const SEND_CHAT = `
         sender
         timestamp
         agentResponse {
+          agentType
           content
+          confidence
+          processingTime
+          metadata
+          timestamp
         }
         metadata
       }
@@ -155,7 +160,6 @@ export const CLOSE_SESSION = `
         metadata
       }
       error
-      timestamp
     }
   }
 `;
@@ -191,17 +195,16 @@ export const ON_CHAT_MESSAGE = `
         sender
         timestamp
         agentResponse {
-          id
-          content
-          sender
-          timestamp
           agentType
+          content
+          confidence
+          processingTime
           metadata
+          timestamp
         }
         metadata
       }
       error
-      timestamp
     }
   }
 `;

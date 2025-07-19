@@ -9,7 +9,7 @@ import Header from './components/layout/Header';
 function AuthenticatedApp() {
   return (
     <Router>
-      <div className="app min-h-screen bg-background">
+      <div className="app-container">
         <Header />
         <main className="app-main">
           <Routes>
@@ -26,13 +26,24 @@ function AuthenticatedApp() {
 // Unauthenticated App Component
 function UnauthenticatedApp() {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="max-w-md w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+    <div style={{ 
+      minHeight: '100vh', 
+      backgroundColor: '#f8fafc', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center' 
+    }}>
+      <div style={{ maxWidth: '28rem', width: '100%' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <h1 style={{ 
+            fontSize: '1.875rem', 
+            fontWeight: '700', 
+            color: '#1e293b', 
+            marginBottom: '0.5rem' 
+          }}>
             Welcome
           </h1>
-          <p className="text-gray-600">
+          <p style={{ color: '#64748b' }}>
             Please sign in to access your AI assistant
           </p>
         </div>
@@ -56,10 +67,23 @@ function AppContent() {
   // Show loading state while configuring
   if (authStatus === 'configuring') {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
+      <div style={{ 
+        minHeight: '100vh', 
+        backgroundColor: '#f8fafc', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center' 
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="animate-spin" style={{
+            width: '2rem',
+            height: '2rem',
+            border: '2px solid #3b82f6',
+            borderTopColor: 'transparent',
+            borderRadius: '50%',
+            margin: '0 auto 1rem'
+          }}></div>
+          <p style={{ color: '#64748b' }}>Loading...</p>
         </div>
       </div>
     );

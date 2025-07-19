@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useStreamingAIAmplifyChat } from '../../hooks/useAIAmplifyChat';
 import { useAgentStatuses } from '../../hooks/useAmplifyGraphQL';
 import AgentMessage from './AgentMessage';
@@ -6,7 +6,6 @@ import AgentAvatar from './AgentAvatar';
 import { AgentType } from '../../types';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { cn, announceToScreenReader } from '../../lib/utils';
 
@@ -53,8 +52,19 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
     }
   });
 
-  // Agent status monitoring
-  const { agents, loading: agentsLoading } = useAgentStatuses();
+  // Agent status monitoring - ONLY WHEN REQUESTED
+  const { agents, loading: agentsLoading, refetch: fetchAgentStatus } = useAgentStatuses();
+
+  // Handle agent status toggle
+  const handleAgentStatusToggle = () => {
+    const newShowStatus = !showAgentStatus;
+    setShowAgentStatus(newShowStatus);
+    
+    // Only fetch agent status when panel is opened
+    if (newShowStatus) {
+      fetchAgentStatus();
+    }
+  };
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -76,6 +86,11 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
     }
   };
 
+  // Simple input change handler as backup
+  const handleInputChangeLocal = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    handleInputChange(e);
+  }, [handleInputChange]);
+
   // Handle form submission with accessibility
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,10 +111,10 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
   // Connection status indicator
   const getConnectionStatusColor = () => {
     switch (connectionStatus) {
-      case 'connected': return 'bg-green-500';
-      case 'connecting': return 'bg-yellow-500 animate-pulse';
-      case 'error': return 'bg-red-500';
-      default: return 'bg-gray-500';
+      case 'connected': return 'status-connected';
+      case 'connecting': return 'status-connecting';
+      case 'error': return 'status-error';
+      default: return 'status-dot';
     }
   };
 
@@ -114,7 +129,7 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
 
   return (
     <div 
-      className={cn("chat-container", className)}
+      className={`chat-container ${className}`}
       onKeyDown={handleKeyDown}
       role="main"
       aria-label="Multi-Agent Chat Interface"
@@ -129,116 +144,106 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
       </a>
 
       {/* Header */}
-      <Card className="flex-shrink-0 rounded-none border-x-0 border-t-0">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-lg sm:text-xl font-semibold text-foreground">
-                Multi-Agent Customer Support
-              </CardTitle>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <div 
-                  className={cn("w-2 h-2 rounded-full", getConnectionStatusColor())}
-                  aria-hidden="true"
-                />
-                <span 
-                  className="text-sm text-muted-foreground"
-                  aria-live="polite"
-                  aria-label={`Connection status: ${getConnectionStatusText()}`}
-                >
-                  {getConnectionStatusText()}
+      <div className="chat-header">
+        <div className="chat-header-content">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 className="chat-title">
+              Multi-Agent Customer Support
+            </h1>
+            <div className="connection-status">
+              <div className={`status-dot ${getConnectionStatusColor()}`} aria-hidden="true" />
+              <span 
+                aria-live="polite"
+                aria-label={`Connection status: ${getConnectionStatusText()}`}
+              >
+                {getConnectionStatusText()}
+              </span>
+              {currentSessionId && (
+                <span className="user-info" style={{ color: '#64748b' }}>
+                  • Session: {currentSessionId.slice(-8)}
                 </span>
-                {currentSessionId && (
-                  <span className="text-sm text-muted-foreground hidden sm:inline">
-                    • Session: {currentSessionId.slice(-8)}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Agent Status Toggle */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAgentStatus(!showAgentStatus)}
-                aria-expanded={showAgentStatus}
-                aria-controls="agent-status-panel"
-                aria-label={`${showAgentStatus ? 'Hide' : 'Show'} agent status panel`}
-              >
-                {showAgentStatus ? 'Hide' : 'Show'} Agents
-              </Button>
-
-              {/* New Session Button */}
-              <Button
-                size="sm"
-                onClick={handleCreateSession}
-                disabled={isLoading}
-                loading={isLoading}
-                loadingText="Creating..."
-                aria-label="Create new chat session"
-              >
-                New Chat
-              </Button>
+              )}
             </div>
           </div>
 
-          {/* Agent Status Panel */}
-          {showAgentStatus && (
-            <Card 
-              id="agent-status-panel"
-              className="mt-4 bg-muted/50"
-              role="region"
-              aria-label="Agent status information"
+          <div className="chat-header-buttons">
+            {/* Agent Status Toggle */}
+            <button
+              className="button button-outline button-sm"
+              onClick={handleAgentStatusToggle}
+              aria-expanded={showAgentStatus}
+              aria-controls="agent-status-panel"
+              aria-label={`${showAgentStatus ? 'Hide' : 'Show'} agent status panel`}
             >
-              <CardContent className="p-4">
-                <h3 className="text-sm font-medium text-foreground mb-3">
-                  Agent Status
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-                  {agentsLoading ? (
-                    <div className="col-span-full text-sm text-muted-foreground">
-                      Loading agent status...
-                    </div>
-                  ) : agents.length > 0 ? (
-                    agents.map((agent) => (
-                      <div 
-                        key={agent.agentId} 
-                        className="flex items-center gap-2 p-3 bg-background rounded-lg border transition-smooth hover:shadow-sm"
-                        role="group"
-                        aria-label={`${agent.type} agent status: ${agent.status}`}
-                      >
-                        <AgentAvatar agentType={agent.type} size="sm" />
-                        <div className="flex-1 min-w-0">
-                          <Badge
-                            variant={
-                              agent.status === 'HEALTHY' ? 'success' :
-                              agent.status === 'DEGRADED' ? 'warning' :
-                              'destructive'
-                            }
-                            className="text-2xs"
-                          >
-                            {agent.status}
-                          </Badge>
-                          {agent.averageResponseTime && (
-                            <div className="text-2xs text-muted-foreground mt-1">
-                              {Math.round(agent.averageResponseTime)}ms avg
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="col-span-full text-sm text-muted-foreground">
-                      No agent status available
-                    </div>
-                  )}
+              {showAgentStatus ? 'Hide' : 'Show'} Agents
+            </button>
+
+            {/* New Session Button */}
+            <button
+              className="button button-primary button-sm"
+              onClick={handleCreateSession}
+              disabled={isLoading}
+            >
+              {isLoading ? 'Creating...' : 'New Chat'}
+            </button>
+          </div>
+        </div>
+
+        {/* Agent Status Panel */}
+        {showAgentStatus && (
+          <div 
+            id="agent-status-panel"
+            className="agent-status-panel"
+            role="region"
+            aria-label="Agent status information"
+          >
+            <h3 className="agent-status-title">
+              Agent Status
+            </h3>
+            <div className="agent-status-grid">
+              {agentsLoading ? (
+                <div style={{ gridColumn: '1 / -1', fontSize: '0.875rem', color: '#64748b' }}>
+                  Loading agent status...
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </CardHeader>
-      </Card>
+              ) : agents.length > 0 ? (
+                agents.map((agent) => (
+                  <div 
+                    key={agent.agentId} 
+                    className="agent-status-card"
+                    role="group"
+                    aria-label={`${agent.type} agent status: ${agent.status}`}
+                  >
+                    <AgentAvatar agentType={agent.type} size="sm" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        display: 'inline-block',
+                        padding: '0.125rem 0.5rem',
+                        fontSize: '0.75rem',
+                        fontWeight: '500',
+                        borderRadius: '0.375rem',
+                        backgroundColor: agent.status === 'HEALTHY' ? '#10b981' : 
+                                       agent.status === 'DEGRADED' ? '#f59e0b' : '#ef4444',
+                        color: 'white'
+                      }}>
+                        {agent.status}
+                      </div>
+                      {agent.averageResponseTime && (
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                          {Math.round(agent.averageResponseTime)}ms avg
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ gridColumn: '1 / -1', fontSize: '0.875rem', color: '#64748b' }}>
+                  No agent status available
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Messages Area */}
       <div 
@@ -248,38 +253,38 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
         aria-label="Chat messages"
       >
         {messages.length === 0 && !isStreaming ? (
-          <div className="text-center py-8 px-4">
-            <div className="text-muted-foreground mb-6">
-              <div className="text-lg sm:text-xl mb-4">👋 Welcome to Multi-Agent Support</div>
-              <p className="text-sm sm:text-base">Our AI agents are ready to help you with:</p>
+          <div className="welcome-screen">
+            <div className="welcome-title">
+              <div style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>👋 Welcome to Multi-Agent Support</div>
+              <p className="welcome-subtitle">Our AI agents are ready to help you with:</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
-              <Card className="p-4 hover:shadow-md transition-smooth cursor-default">
-                <div className="flex items-center gap-3">
+            <div className="welcome-grid">
+              <div className="welcome-card">
+                <div className="welcome-card-content">
                   <AgentAvatar agentType={AgentType.ORDER_MANAGEMENT} size="sm" />
-                  <span className="text-sm font-medium">Order Management</span>
+                  <span className="welcome-card-text">Order Management</span>
                 </div>
-              </Card>
-              <Card className="p-4 hover:shadow-md transition-smooth cursor-default">
-                <div className="flex items-center gap-3">
+              </div>
+              <div className="welcome-card">
+                <div className="welcome-card-content">
                   <AgentAvatar agentType={AgentType.PRODUCT_RECOMMENDATION} size="sm" />
-                  <span className="text-sm font-medium">Product Recommendations</span>
+                  <span className="welcome-card-text">Product Recommendations</span>
                 </div>
-              </Card>
-              <Card className="p-4 hover:shadow-md transition-smooth cursor-default">
-                <div className="flex items-center gap-3">
+              </div>
+              <div className="welcome-card">
+                <div className="welcome-card-content">
                   <AgentAvatar agentType={AgentType.PERSONALIZATION} size="sm" />
-                  <span className="text-sm font-medium">Personalization</span>
+                  <span className="welcome-card-text">Personalization</span>
                 </div>
-              </Card>
-              <Card className="p-4 hover:shadow-md transition-smooth cursor-default">
-                <div className="flex items-center gap-3">
+              </div>
+              <div className="welcome-card">
+                <div className="welcome-card-content">
                   <AgentAvatar agentType={AgentType.TROUBLESHOOTING} size="sm" />
-                  <span className="text-sm font-medium">Technical Support</span>
+                  <span className="welcome-card-text">Technical Support</span>
                 </div>
-              </Card>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground mt-6">
+            <p className="welcome-footer">
               Start typing your question below to get started!
             </p>
           </div>
@@ -296,7 +301,7 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
                 processingTime={message.processingTime}
                 timestamp={message.createdAt}
                 metadata={message.metadata}
-                className="chat-message-enter"
+                className="fade-in"
               />
             ))}
 
@@ -308,7 +313,7 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
                 role="assistant"
                 agentType={streamingAgentType || undefined}
                 isStreaming={true}
-                className="chat-message-streaming"
+                className="slide-up"
               />
             )}
           </>
@@ -316,70 +321,72 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
 
         {/* Error Display */}
         {error && (
-          <Card className="mx-4 border-destructive bg-destructive/10">
-            <CardContent className="p-4">
-              <div className="text-destructive text-sm" role="alert">
-                <strong>Error:</strong> {error.message}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="error-message" role="alert">
+            <strong>Error:</strong> {error.message}
+          </div>
         )}
 
         <div ref={messagesEndRef} aria-hidden="true" />
       </div>
 
       {/* Input Area */}
-      <Card className="chat-input-container rounded-none border-x-0 border-b-0">
-        <CardContent className="p-4">
-          <form onSubmit={handleFormSubmit} className="flex gap-2">
-            <Input
+      <div className="chat-input-area">
+        <form onSubmit={handleFormSubmit}>
+          <div className="chat-input-form">
+            <input
               ref={inputRef}
               id="chat-input"
               type="text"
               value={input}
-              onChange={handleInputChange}
+              onChange={handleInputChangeLocal}
               onFocus={() => setIsInputFocused(true)}
               onBlur={() => setIsInputFocused(false)}
               placeholder="Type your message..."
-              disabled={isLoading || !currentSessionId}
-              className={cn(
-                "flex-1 transition-smooth",
-                isInputFocused && "ring-2 ring-ring"
-              )}
+              disabled={isLoading}
+              className="chat-input"
               aria-label="Chat message input"
               aria-describedby="input-help"
             />
-            <Button
+            <button
               type="submit"
-              disabled={isLoading || !input.trim() || !currentSessionId}
-              loading={isLoading}
-              loadingText="Sending..."
+              disabled={isLoading || !input.trim()}
               aria-label="Send message"
-              className="px-6"
+              className="send-button"
             >
-              Send
-            </Button>
-          </form>
-
-          <div id="input-help" className="sr-only">
-            Type your message and press Enter or click Send to chat with our AI agents
+              {isLoading ? (
+                <div className="animate-spin" style={{
+                  width: '1.25rem',
+                  height: '1.25rem',
+                  border: '2px solid white',
+                  borderTopColor: 'transparent',
+                  borderRadius: '50%'
+                }} />
+              ) : (
+                <svg style={{ width: '1.25rem', height: '1.25rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              )}
+            </button>
           </div>
+        </form>
 
-          {!currentSessionId && (
-            <div className="mt-3 text-sm text-muted-foreground text-center">
-              <Button
-                variant="link"
-                onClick={handleCreateSession}
-                className="p-0 h-auto text-sm"
-                aria-label="Create a new chat session to start chatting"
-              >
-                Create a new session
-              </Button>
-              {' '}to start chatting
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        <div id="input-help" className="sr-only">
+          Type your message and press Enter or click Send to chat with our AI agents
+        </div>
+
+        {!currentSessionId && (
+          <div className="session-prompt">
+            <button
+              onClick={handleCreateSession}
+              className="session-link"
+              aria-label="Create a new chat session to start chatting"
+            >
+              Create a new session
+            </button>
+            {' '}to start chatting
+          </div>
+        )}
+      </div>
     </div>
   );
 };

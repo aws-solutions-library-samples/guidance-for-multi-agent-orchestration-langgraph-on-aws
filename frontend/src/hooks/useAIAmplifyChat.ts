@@ -45,10 +45,14 @@ export function useAIAmplifyChat(options: UseAIAmplifyChat = {}) {
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Real-time message subscription
+  // Real-time message subscription - ONLY WHEN ACTIVELY CHATTING
   const {
     messages: subscriptionMessages,
     connectionStatus
-  } = useChatMessageSubscription(currentSessionId || '', !!currentSessionId);
+  } = useChatMessageSubscription(
+    currentSessionId || '',
+    !!currentSessionId && messages.length > 0 // Only enable after first message is sent
+  );
 
   // Convert GraphQL messages to AI SDK format
   const convertToAIMessages = useCallback((messages: ChatMessage[]): AIMessage[] => {
@@ -71,12 +75,9 @@ export function useAIAmplifyChat(options: UseAIAmplifyChat = {}) {
   ): SendChatInput => ({
     sessionId,
     message,
-    metadata: {
-      timestamp: new Date().toISOString(),
-      source: 'ai-sdk'
-    }
   }), []);
 
+  // Handle input change - auto-create session if needed
   // Handle input change
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value);
@@ -285,7 +286,7 @@ export function useAIAmplifyChat(options: UseAIAmplifyChat = {}) {
   };
 }
 
-// Hook for streaming chat with enhanced real-time updates
+// Hook for streaming chat with enhanced real-time updates - CONSERVATIVE CONNECTIONS
 export function useStreamingAIAmplifyChat(sessionId: string, options: UseAIAmplifyChat = {}) {
   const baseChat = useAIAmplifyChat({ ...options, sessionId });
   const [streamingMessage, setStreamingMessage] = useState<string>('');

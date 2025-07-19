@@ -39,93 +39,117 @@ const AgentMessage: React.FC<AgentMessageProps> = ({
   };
 
   return (
-    <div className={`flex gap-3 p-4 ${isUser ? 'flex-row-reverse' : 'flex-row'} ${className}`}>
+    <div className={`message-container ${isUser ? 'user' : ''} ${className}`}>
       {/* Avatar */}
-      <div className="flex-shrink-0">
-        {isUser ? (
-          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
-            U
-          </div>
-        ) : agentType ? (
-          <AgentAvatar agentType={agentType} size="md" />
-        ) : (
-          <div className="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
-            AI
-          </div>
-        )}
+      <div className="message-avatar" style={{
+        backgroundColor: isUser ? '#3b82f6' : 
+                        agentType === AgentType.ORDER_MANAGEMENT ? '#3b82f6' :
+                        agentType === AgentType.PRODUCT_RECOMMENDATION ? '#10b981' :
+                        agentType === AgentType.PERSONALIZATION ? '#8b5cf6' :
+                        agentType === AgentType.TROUBLESHOOTING ? '#ef4444' :
+                        agentType === AgentType.SUPERVISOR ? '#6b7280' : '#64748b'
+      }}>
+        {isUser ? 'U' : 
+         agentType === AgentType.ORDER_MANAGEMENT ? 'O' :
+         agentType === AgentType.PRODUCT_RECOMMENDATION ? 'P' :
+         agentType === AgentType.PERSONALIZATION ? 'Pe' :
+         agentType === AgentType.TROUBLESHOOTING ? 'T' :
+         agentType === AgentType.SUPERVISOR ? 'S' : 'AI'}
       </div>
 
       {/* Message Content */}
-      <div className={`flex-1 max-w-[70%] ${isUser ? 'text-right' : 'text-left'}`}>
+      <div className={`message-content ${isUser ? 'user' : ''}`}>
         {/* Agent Badge and Metadata */}
         {isAssistant && agentType && (
-          <div className={`mb-2 ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
-            <AgentBadge 
-              agentType={agentType}
-              confidence={confidence}
-              processingTime={processingTime}
-              showMetrics={true}
-            />
+          <div style={{ 
+            marginBottom: '0.25rem',
+            alignSelf: isUser ? 'flex-end' : 'flex-start'
+          }}>
+            <div style={{
+              display: 'inline-block',
+              padding: '0.125rem 0.5rem',
+              fontSize: '0.75rem',
+              fontWeight: '500',
+              borderRadius: '0.375rem',
+              backgroundColor: '#f1f5f9',
+              color: '#475569',
+              border: '1px solid #e2e8f0'
+            }}>
+              {agentType.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+            </div>
           </div>
         )}
 
         {/* Message Bubble */}
-        <div 
-          className={`
-            relative
-            px-4 
-            py-3 
-            rounded-2xl 
-            ${isUser 
-              ? 'bg-blue-500 text-white ml-auto' 
-              : 'bg-gray-100 text-gray-900'
-            }
-            ${isStreaming ? 'animate-pulse' : ''}
-          `}
-        >
+        <div className={`message-bubble ${isUser ? 'user' : 'agent'} ${isStreaming ? 'streaming' : ''}`}>
           {/* Streaming indicator */}
           {isStreaming && (
-            <div className="flex items-center gap-2 mb-2 text-sm opacity-70">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              marginBottom: '0.5rem', 
+              fontSize: '0.875rem', 
+              opacity: 0.7 
+            }}>
+              <div style={{ display: 'flex', gap: '0.25rem' }}>
+                <div className="animate-bounce" style={{
+                  width: '0.5rem',
+                  height: '0.5rem',
+                  backgroundColor: 'currentColor',
+                  borderRadius: '50%',
+                  animationDelay: '0ms'
+                }}></div>
+                <div className="animate-bounce" style={{
+                  width: '0.5rem',
+                  height: '0.5rem',
+                  backgroundColor: 'currentColor',
+                  borderRadius: '50%',
+                  animationDelay: '150ms'
+                }}></div>
+                <div className="animate-bounce" style={{
+                  width: '0.5rem',
+                  height: '0.5rem',
+                  backgroundColor: 'currentColor',
+                  borderRadius: '50%',
+                  animationDelay: '300ms'
+                }}></div>
               </div>
               <span>Agent is typing...</span>
             </div>
           )}
 
           {/* Message Content */}
-          <div className="whitespace-pre-wrap break-words">
+          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {content}
           </div>
-
-          {/* Message tail */}
-          <div 
-            className={`
-              absolute 
-              top-4 
-              w-3 
-              h-3 
-              transform 
-              rotate-45 
-              ${isUser 
-                ? 'bg-blue-500 -right-1' 
-                : 'bg-gray-100 -left-1'
-              }
-            `}
-          />
         </div>
 
         {/* Timestamp and additional metadata */}
-        <div className={`mt-2 text-xs text-gray-500 ${isUser ? 'text-right' : 'text-left'}`}>
+        <div className={`message-meta ${isUser ? 'user' : ''}`}>
           {timestamp && formatTimestamp(timestamp)}
+          
+          {/* Processing time and confidence for agent messages */}
+          {isAssistant && (confidence || processingTime) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+              {confidence && (
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  {Math.round(confidence * 100)}% confident
+                </span>
+              )}
+              {processingTime && (
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  {processingTime}ms
+                </span>
+              )}
+            </div>
+          )}
           
           {/* Additional metadata display */}
           {metadata && Object.keys(metadata).length > 0 && (
-            <div className="mt-1 text-xs text-gray-400">
+            <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#94a3b8' }}>
               {metadata.source && (
-                <span className="mr-2">via {metadata.source}</span>
+                <span style={{ marginRight: '0.5rem' }}>via {metadata.source}</span>
               )}
               {metadata.model && (
                 <span>• {metadata.model}</span>

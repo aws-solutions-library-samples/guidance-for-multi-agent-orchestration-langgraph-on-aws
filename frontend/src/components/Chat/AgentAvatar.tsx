@@ -1,7 +1,5 @@
 import React from 'react';
 import { AgentType } from '../../types';
-import { Avatar, AvatarFallback } from '../ui/avatar';
-import { cn } from '../../lib/utils';
 
 interface AgentAvatarProps {
   agentType: AgentType;
@@ -15,54 +13,36 @@ const agentConfig = {
     name: 'Order Agent',
     icon: '📦',
     fallback: 'OR',
-    className: 'agent-avatar-order',
+    color: '#3b82f6',
     ariaLabel: 'Order Management Agent'
   },
   [AgentType.PRODUCT_RECOMMENDATION]: {
     name: 'Product Agent',
     icon: '🛍️',
     fallback: 'PR',
-    className: 'agent-avatar-product',
+    color: '#10b981',
     ariaLabel: 'Product Recommendation Agent'
   },
   [AgentType.PERSONALIZATION]: {
     name: 'Personal Agent',
     icon: '👤',
     fallback: 'PE',
-    className: 'agent-avatar-personal',
+    color: '#8b5cf6',
     ariaLabel: 'Personalization Agent'
   },
   [AgentType.TROUBLESHOOTING]: {
     name: 'Support Agent',
     icon: '🔧',
     fallback: 'TS',
-    className: 'agent-avatar-support',
+    color: '#ef4444',
     ariaLabel: 'Troubleshooting Support Agent'
   },
   [AgentType.SUPERVISOR]: {
     name: 'Supervisor',
     icon: '👨‍💼',
     fallback: 'SU',
-    className: 'agent-avatar-supervisor',
+    color: '#6b7280',
     ariaLabel: 'Supervisor Agent'
-  }
-};
-
-const sizeConfig = {
-  sm: {
-    avatar: 'h-6 w-6',
-    text: 'text-xs',
-    icon: 'text-xs'
-  },
-  md: {
-    avatar: 'h-8 w-8',
-    text: 'text-sm',
-    icon: 'text-sm'
-  },
-  lg: {
-    avatar: 'h-12 w-12',
-    text: 'text-base',
-    icon: 'text-lg'
   }
 };
 
@@ -73,45 +53,58 @@ const AgentAvatar: React.FC<AgentAvatarProps> = ({
   className = '' 
 }) => {
   const config = agentConfig[agentType];
-  const sizeStyles = sizeConfig[size];
 
   if (!config) {
     return null;
   }
 
+  const avatarSize = size === 'sm' ? '1.5rem' : size === 'lg' ? '3rem' : '2rem';
+  const fontSize = size === 'sm' ? '0.75rem' : size === 'lg' ? '1rem' : '0.875rem';
+  const labelSize = size === 'sm' ? '0.75rem' : size === 'lg' ? '1rem' : '0.875rem';
+
   return (
     <div 
-      className={cn("flex items-center gap-2", className)}
+      className={`agent-avatar ${className}`}
+      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
       role="img"
       aria-label={config.ariaLabel}
     >
-      <Avatar 
-        className={cn(
-          sizeStyles.avatar,
-          config.className,
-          "transition-smooth hover:scale-105 focus-ring"
-        )}
+      <div 
+        className="agent-avatar"
+        style={{
+          width: avatarSize,
+          height: avatarSize,
+          backgroundColor: config.color,
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          fontSize: fontSize,
+          fontWeight: '500',
+          transition: 'all 0.2s',
+          cursor: 'default'
+        }}
+        title={config.name}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.05)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
       >
-        <AvatarFallback 
-          className={cn(
-            config.className,
-            sizeStyles.icon,
-            "font-medium select-none"
-          )}
-          title={config.name}
-        >
-          <span className="sr-only">{config.name}</span>
-          <span aria-hidden="true">{config.icon}</span>
-        </AvatarFallback>
-      </Avatar>
+        <span style={{ display: 'none' }}>{config.name}</span>
+        <span aria-hidden="true">{config.icon}</span>
+      </div>
       
       {showLabel && (
         <span 
-          className={cn(
-            sizeStyles.text, 
-            "font-medium text-foreground",
-            "hidden sm:inline-block" // Hide on mobile for space
-          )}
+          style={{
+            fontSize: labelSize,
+            fontWeight: '500',
+            color: '#1e293b',
+            display: window.innerWidth >= 640 ? 'inline-block' : 'none'
+          }}
           id={`agent-label-${agentType.toLowerCase()}`}
         >
           {config.name}

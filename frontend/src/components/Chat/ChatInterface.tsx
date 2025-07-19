@@ -42,23 +42,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onAgentResponse={handleAgentResponse}
         className="flex-1"
       />
-      
-      {/* Optional: Agent Activity Summary */}
-      {Object.values(agentActivity).some(count => count > 0) && (
-        <div className="flex-shrink-0 p-2 bg-gray-50 border-t text-xs text-gray-600">
-          <div className="flex items-center gap-4">
-            <span>Agent Activity:</span>
-            {Object.entries(agentActivity).map(([type, count]) => 
-              count > 0 && (
-                <span key={type} className="flex items-center gap-1">
-                  <span className="capitalize">{type.toLowerCase().replace('_', ' ')}</span>
-                  <span className="bg-gray-200 px-1 rounded">{count}</span>
-                </span>
-              )
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

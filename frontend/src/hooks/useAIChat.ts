@@ -23,7 +23,7 @@ export function useAIChat(options: UseAIChatOptions = {}) {
   const { sendMessage: sendGraphQLMessage, loading: sendingMessage } = useSendChat();
   const { createSession, loading: creatingSession } = useCreateSession();
   const { messages: graphqlMessages, loading: loadingHistory } = useChatHistory(
-    options.sessionId || '', 
+    options.sessionId || '',
     50
   );
 
@@ -42,16 +42,12 @@ export function useAIChat(options: UseAIChatOptions = {}) {
 
   // Convert AI SDK message to GraphQL format
   const convertToGraphQLInput = useCallback((
-    message: string, 
+    message: string,
     sessionId: string
   ): SendChatInput => ({
     sessionId,
     content: message,
     sender: 'user',
-    metadata: {
-      timestamp: new Date().toISOString(),
-      source: 'ai-sdk'
-    }
   }), []);
 
   // Custom message handler that integrates with GraphQL
@@ -67,10 +63,6 @@ export function useAIChat(options: UseAIChatOptions = {}) {
       try {
         const sessionResult = await createSession({
           userId: user.userId,
-          metadata: {
-            source: 'ai-sdk-chat',
-            createdAt: new Date().toISOString()
-          }
         });
 
         if (sessionResult?.success && sessionResult.session) {
@@ -128,7 +120,7 @@ export function useAIChat(options: UseAIChatOptions = {}) {
   // Override the default submit handler to use GraphQL
   const customHandleSubmit = useCallback(async (e?: React.FormEvent) => {
     e?.preventDefault();
-    
+
     if (!input.trim() || isLoading) return;
 
     const userMessage: AIMessage = {
@@ -144,7 +136,7 @@ export function useAIChat(options: UseAIChatOptions = {}) {
 
     try {
       const result = await handleSendMessage(input);
-      
+
       if (result?.agentResponse) {
         const assistantMessage: AIMessage = {
           id: result.id + '_response',
@@ -159,7 +151,7 @@ export function useAIChat(options: UseAIChatOptions = {}) {
     } catch (error) {
       console.error('Error in custom submit:', error);
       options.onError?.(error as Error);
-      
+
       // Remove optimistic user message on error
       setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
       setInput(input); // Restore input
@@ -193,22 +185,18 @@ export function useAIChat(options: UseAIChatOptions = {}) {
     append,
     setMessages,
     setInput,
-    
+
     // Additional GraphQL-specific functionality
     sessionId: currentSessionId,
     setSessionId: setCurrentSessionId,
     loadingHistory,
-    
+
     // Helper methods
     createNewSession: useCallback(async () => {
       if (!user?.userId) return;
-      
+
       const result = await createSession({
         userId: user.userId,
-        metadata: {
-          source: 'ai-sdk-chat',
-          createdAt: new Date().toISOString()
-        }
       });
 
       if (result?.success && result.session) {
@@ -235,7 +223,7 @@ export function useStreamingAIChat(sessionId: string, options: UseAIChatOptions 
   const simulateStreaming = useCallback((content: string, onComplete?: () => void) => {
     setIsStreaming(true);
     setStreamingMessage('');
-    
+
     let index = 0;
     const interval = setInterval(() => {
       if (index < content.length) {
