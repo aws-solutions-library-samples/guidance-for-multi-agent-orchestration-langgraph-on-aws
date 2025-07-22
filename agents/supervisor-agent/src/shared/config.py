@@ -25,7 +25,7 @@ class BaseConfig:
 
         # AWS Bedrock Configuration
         self.bedrock_model_id = os.getenv(
-            "BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+            "BEDROCK_MODEL_ID", "anthropic.claude-3-5-haiku-20241022-v1:0"
         )
         self.bedrock_temperature = float(os.getenv("BEDROCK_TEMPERATURE", "0.7"))
         self.bedrock_max_tokens = int(os.getenv("BEDROCK_MAX_TOKENS", "1000"))

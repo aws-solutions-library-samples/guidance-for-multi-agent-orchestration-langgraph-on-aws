@@ -74,19 +74,20 @@ This plan outlines the deployment of a multi-agent customer support system on AW
 
 ### 4. Database Layer
 
-#### RDS PostgreSQL Instance
-- **Engine**: PostgreSQL 15
-- **Instance Class**: db.t3.micro (for development) / db.t3.small (for production)
+#### Aurora PostgreSQL Serverless v2
+- **Engine**: Aurora PostgreSQL 15.3
+- **Configuration**: Pure Serverless v2 (0.5-4 ACUs)
 - **Multi-AZ**: Yes (for production)
-- **Storage**: 20 GB GP2, auto-scaling enabled
+- **Storage**: Auto-scaling, encrypted
 - **Backup**: 7-day retention
 - **Subnets**: Private subnets only
 - **Security Group**: Allow access only from ECS tasks
+- **RDS Data API**: Enabled for serverless database access
 
 #### Database Schema:
-- Migrate existing SQLite `order_management.db` to PostgreSQL
+- Migrated from SQLite `order_management.db` to Aurora PostgreSQL
 - Shared database for all agents with proper table isolation
-- Connection pooling via RDS Proxy (optional)
+- RDS Data API for connection-less database access
 
 ### 5. Security
 

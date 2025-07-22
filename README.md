@@ -1,6 +1,6 @@
 # LangGraph Multi-Agent Deployment
 
-A multi-agent customer support system using LangGraph and AWS Bedrock.
+A multi-agent customer support system using LangGraph and AWS Bedrock, deployed on AWS with ECS Fargate and Aurora Serverless v2.
 
 ## Features
 
@@ -10,7 +10,34 @@ A multi-agent customer support system using LangGraph and AWS Bedrock.
 - Troubleshooting agent for technical support
 - Personalization agent for customer profile management
 
-## Installation
+## AWS Deployment
+
+### Quick Start
+```bash
+# Deploy to AWS
+cd infra
+npm install
+npx cdk deploy --all
+
+# Clean up
+./destroy-stacks.sh
+```
+
+### Architecture
+- **ECS Fargate**: Serverless containers for each agent
+- **Aurora Serverless v2**: Auto-scaling PostgreSQL database
+- **Application Load Balancer**: Traffic routing to agents
+- **RDS Data API**: Connection-less database access
+- **GuardDuty Integration**: Automatic security monitoring
+
+### Important Notes
+- GuardDuty automatically creates VPC endpoints for ECS Fargate monitoring
+- Use the provided cleanup script if stack destruction fails
+- See `AWS_DEPLOYMENT_PLAN.md` for detailed architecture information
+
+## Local Development
+
+### Installation
 
 ```bash
 # Install in editable mode
@@ -20,7 +47,7 @@ pip install -e .
 uv pip install -e .
 ```
 
-## Usage
+### Usage
 
 ```bash
 # Run supervisor agent
@@ -30,7 +57,7 @@ python -m src.supervisor_agent.main
 python -m src.order_agent.main
 ```
 
-## Testing
+### Testing
 
 ```bash
 # Run tests
@@ -39,3 +66,9 @@ pytest tests/
 # Run specific test
 python tests/test_simple_graph_agent.py
 ```
+
+## Documentation
+
+- `AWS_DEPLOYMENT_PLAN.md` - Comprehensive deployment guide
+- `AGENT_IMPLEMENTATION_GUIDE.md` - Agent development guide
+- `LANGGRAPH_SUPERVISOR_IMPLEMENTATION.md` - Supervisor agent details

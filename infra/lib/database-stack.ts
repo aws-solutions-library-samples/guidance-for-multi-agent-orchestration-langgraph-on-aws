@@ -54,7 +54,7 @@ export class DatabaseStack extends cdk.Stack {
       },
     });
 
-    // Create Aurora PostgreSQL cluster
+    // Create Aurora PostgreSQL cluster with pure Serverless v2
     this.database = new rds.DatabaseCluster(this, 'Database', {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
         version: rds.AuroraPostgresEngineVersion.VER_15_3,
@@ -66,23 +66,16 @@ export class DatabaseStack extends cdk.Stack {
       securityGroups: [databaseSecurityGroup],
       parameterGroup,
 
-      // Writer instance configuration
-      writer: rds.ClusterInstance.provisioned('writer', {
-        instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MEDIUM),
+      // Serverless v2 writer instance
+      writer: rds.ClusterInstance.serverlessV2('writer', {
         publiclyAccessible: false,
         enablePerformanceInsights: true,
         performanceInsightRetention: rds.PerformanceInsightRetention.DEFAULT,
       }),
 
-      // Reader instances for high availability and read scaling
-      // readers: [
-      //   rds.ClusterInstance.provisioned('reader1', {
-      //     instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MEDIUM),
-      //     publiclyAccessible: false,
-      //     enablePerformanceInsights: true,
-      //     performanceInsightRetention: rds.PerformanceInsightRetention.DEFAULT,
-      //   }),
-      // ],
+      // Pure Serverless v2 configuration
+      serverlessV2MinCapacity: 0.5,  // Minimum 0.5 ACUs
+      serverlessV2MaxCapacity: 4,    // Maximum 4 ACUs for better scaling
 
       // Backup and maintenance configuration
       backup: {
@@ -98,11 +91,11 @@ export class DatabaseStack extends cdk.Stack {
       // Monitoring configuration
       monitoringInterval: cdk.Duration.seconds(60),
       cloudwatchLogsExports: ['postgresql'],
-
-      // Auto scaling configuration for Aurora Serverless v2 (optional)
-      serverlessV2MinCapacity: 0.5,
-      serverlessV2MaxCapacity: 2,
     });
+
+    // Enable RDS Data API on the Aurora cluster
+    const cfnDbCluster = this.database.node.defaultChild as rds.CfnDBCluster;
+    cfnDbCluster.enableHttpEndpoint = true;
 
     // Enable automatic minor version upgrades
     this.database.node.children.forEach((child) => {
@@ -151,6 +144,17 @@ export class DatabaseStack extends cdk.Stack {
       value: this.database.clusterIdentifier,
       description: 'Aurora cluster identifier',
       exportName: `${this.stackName}-DatabaseClusterIdentifier`,
+    });
+
+    // Output database cluster ARN for RDS Data API
+    new cdk.CfnOutput(this, 'DatabaseClusterArn', {
+      value: cdk.Stack.of(this).formatArn({
+        service: 'rds',
+        resource: 'cluster',
+        resourceName: this.database.clusterIdentifier,
+      }),
+      description: 'Aurora cluster ARN for RDS Data API',
+      exportName: `${this.stackName}-DatabaseClusterArn`,
     });
   }
 }

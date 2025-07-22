@@ -166,8 +166,8 @@ class SubAgentClient:
         port_mapping = {
             "order_management": 8001,
             "product_recommendation": 8002,
-            "troubleshooting": 8004,
-            "personalization": 8003,
+            "troubleshooting": 8003,
+            "personalization": 8004,
         }
         return port_mapping.get(agent_type, 8000)
 

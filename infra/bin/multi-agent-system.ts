@@ -51,6 +51,11 @@ const ecsStack = new EcsStack(app, `${stackPrefix}-ECS-${environment}`, {
   vpc: networkStack.vpc,
   ecsSecurityGroup: networkStack.ecsSecurityGroup,
   databaseSecret: databaseStack.databaseSecret,
+  databaseClusterArn: cdk.Stack.of(databaseStack).formatArn({
+    service: 'rds',
+    resource: 'cluster',
+    resourceName: databaseStack.database.clusterIdentifier,
+  }),
   targetGroups: loadBalancerStack.targetGroups,
   description: 'ECS infrastructure for multi-agent system',
   stackName: `${stackPrefix}-ECS-${environment}`,

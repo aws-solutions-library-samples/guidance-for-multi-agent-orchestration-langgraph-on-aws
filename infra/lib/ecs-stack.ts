@@ -15,6 +15,7 @@ export interface EcsStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;
   ecsSecurityGroup: ec2.SecurityGroup;
   databaseSecret: secretsmanager.Secret;
+  databaseClusterArn: string;
   targetGroups: Map<string, elbv2.ApplicationTargetGroup>;
 }
 
@@ -85,7 +86,7 @@ export class EcsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: EcsStackProps) {
     super(scope, id, props);
 
-    const { vpc, ecsSecurityGroup, databaseSecret, targetGroups } = props;
+    const { vpc, ecsSecurityGroup, databaseSecret, databaseClusterArn, targetGroups } = props;
 
     // Create Cloud Map namespace for service discovery
     this.cloudMapNamespace = new servicediscovery.PrivateDnsNamespace(this, 'MultiAgentNamespace', {
@@ -175,6 +176,35 @@ export class EcsStack extends cdk.Stack {
       })
     );
 
+    // Add permissions for RDS Data API
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'rds-data:ExecuteStatement',
+          'rds-data:BatchExecuteStatement',
+          'rds-data:BeginTransaction',
+          'rds-data:CommitTransaction',
+          'rds-data:RollbackTransaction',
+        ],
+        resources: ['*'],
+      })
+    );
+
+    // Add permissions for Systems Manager Session Manager (for debugging)
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ssmmessages:CreateControlChannel',
+          'ssmmessages:CreateDataChannel',
+          'ssmmessages:OpenControlChannel',
+          'ssmmessages:OpenDataChannel',
+        ],
+        resources: ['*'],
+      })
+    );
+
     // Create ECR repositories and ECS infrastructure for each agent
     this.agentConfigs.forEach((agentConfig) => {
       this.createAgentInfrastructure(
@@ -184,6 +214,7 @@ export class EcsStack extends cdk.Stack {
         taskExecutionRole,
         taskRole,
         databaseSecret,
+        databaseClusterArn,
         targetGroups,
         this.cloudMapNamespace
       );
@@ -217,7 +248,7 @@ export class EcsStack extends cdk.Stack {
       if (repository) {
         new cdk.CfnOutput(this, `${this.toPascalCase(agentConfig.name)}ECRRepository`, {
           value: repository.repositoryUri,
-          description: `ECR repository URI for ${agentConfig.name} agent`,
+          description: `CDK asset repository URI for ${agentConfig.name} agent`,
           exportName: `${this.stackName}-${this.toPascalCase(agentConfig.name)}ECRRepository`,
         });
       }
@@ -252,26 +283,13 @@ export class EcsStack extends cdk.Stack {
     taskExecutionRole: iam.Role,
     taskRole: iam.Role,
     databaseSecret: secretsmanager.Secret,
+    databaseClusterArn: string,
     targetGroups: Map<string, elbv2.ApplicationTargetGroup>,
     cloudMapNamespace: servicediscovery.PrivateDnsNamespace
   ): void {
     const { name, port, cpu, memory, desiredCount, dockerContext, dockerfile } = agentConfig;
 
-    // Create ECR repository
-    const repository = new ecr.Repository(this, `${this.toPascalCase(name)}Repository`, {
-      repositoryName: `multi-agent-system/${name}-agent`,
-      imageScanOnPush: true,
-      lifecycleRules: [
-        {
-          description: 'Keep last 10 images',
-          maxImageCount: 10,
-        },
-      ],
-    });
-
-    this.ecrRepositories.set(name, repository);
-
-    // Build Docker image from source and automatically push to ECR
+    // Build Docker image from source and automatically push to CDK asset ECR repository
     const dockerImageAsset = new DockerImageAsset(this, `${this.toPascalCase(name)}DockerImage`, {
       directory: dockerContext,
       file: dockerfile,
@@ -286,6 +304,11 @@ export class EcsStack extends cdk.Stack {
         file: true,
       },
     });
+
+    // Store the image URI for outputs
+    this.ecrRepositories.set(name, {
+      repositoryUri: dockerImageAsset.imageUri.split(':')[0]
+    } as any);
 
     // Use the built Docker image asset
     const containerImage = ecs.ContainerImage.fromDockerImageAsset(dockerImageAsset);
@@ -339,8 +362,13 @@ export class EcsStack extends cdk.Stack {
         // Service endpoints for discovery
         ORDER_MANAGEMENT_SERVICE: 'order-management.multi-agent.local:8001',
         PRODUCT_RECOMMENDATION_SERVICE: 'product-recommendation.multi-agent.local:8002',
-        PERSONALIZATION_SERVICE: 'personalization.multi-agent.local:8003',
-        TROUBLESHOOTING_SERVICE: 'troubleshooting.multi-agent.local:8004',
+        PERSONALIZATION_SERVICE: 'personalization.multi-agent.local:8004',
+        TROUBLESHOOTING_SERVICE: 'troubleshooting.multi-agent.local:8003',
+        // RDS Data API configuration (only for order-management agent)
+        ...(name === 'order-management' ? {
+          DATABASE_CLUSTER_ARN: databaseClusterArn,
+          DATABASE_SECRET_ARN: databaseSecret.secretArn,
+        } : {}),
       },
       secrets: {
         DATABASE_URL: ecs.Secret.fromSecretsManager(databaseSecret, 'engine'),
