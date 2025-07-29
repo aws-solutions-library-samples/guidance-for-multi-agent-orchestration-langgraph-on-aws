@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "setup-config": "node scripts/setup-config.js",
-    "setup-config:cdk": "node scripts/setup-config.js ../infra/cdk.out/outputs.json"
+    "setup-config:cdk": "node scripts/setup-config.js ../cdk-outputs.json"
   },
   "dependencies": {
     "@ai-sdk/react": "^1.2.12",

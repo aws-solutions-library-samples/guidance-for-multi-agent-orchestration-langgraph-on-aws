@@ -67,6 +67,7 @@ const streamingApiStack = new StreamingApiStack(app, `${stackPrefix}-StreamingAP
   vpc: networkStack.vpc,
   ecsSecurityGroup: networkStack.ecsSecurityGroup,
   environment,
+  supervisorAgentUrl: `http://${loadBalancerStack.loadBalancer.loadBalancerDnsName}`,
   description: 'AppSync GraphQL API for multi-agent system',
   stackName: `${stackPrefix}-StreamingAPI-${environment}`,
 });
@@ -87,7 +88,7 @@ loadBalancerStack.addDependency(networkStack);
 ecsStack.addDependency(databaseStack);
 ecsStack.addDependency(loadBalancerStack);
 streamingApiStack.addDependency(networkStack);
-streamingApiStack.addDependency(ecsStack);
+streamingApiStack.addDependency(loadBalancerStack);
 monitoringStack.addDependency(ecsStack);
 
 // Add tags to all stacks

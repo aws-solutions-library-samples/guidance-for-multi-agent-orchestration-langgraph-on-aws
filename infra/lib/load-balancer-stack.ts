@@ -46,6 +46,9 @@ export class LoadBalancerStack extends cdk.Stack {
       },
     });
 
+    // Configure ALB attributes for longer agent processing times
+    this.loadBalancer.setAttribute('idle_timeout.timeout_seconds', '300'); // 5 minutes for agent processing
+
     // Create target groups for each agent
     this.createTargetGroups(vpc);
 

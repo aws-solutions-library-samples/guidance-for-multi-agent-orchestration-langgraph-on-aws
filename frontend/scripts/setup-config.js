@@ -12,16 +12,41 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Default configuration template
-const defaultConfig = {
-  VITE_AWS_REGION: 'us-east-1',
-  VITE_USER_POOL_ID: '',
-  VITE_USER_POOL_CLIENT_ID: '',
-  VITE_IDENTITY_POOL_ID: '',
-  VITE_GRAPHQL_API_URL: '',
-  VITE_APP_TITLE: 'Multi-Agent Customer Support',
-  VITE_APP_VERSION: '1.0.0'
-};
+/**
+ * Load template configuration from .env.example
+ * This ensures single source of truth for environment variables
+ */
+function loadTemplateFromExample() {
+  const examplePath = path.join(__dirname, '../.env.example');
+  
+  try {
+    const content = fs.readFileSync(examplePath, 'utf8');
+    const config = {};
+    
+    content.split('\n').forEach(line => {
+      const trimmedLine = line.trim();
+      if (trimmedLine && trimmedLine.includes('=') && !trimmedLine.startsWith('#')) {
+        const [key, value] = trimmedLine.split('=', 2);
+        // Clean placeholder values from .env.example
+        const cleanValue = value.replace(/XXXXXXXXX.*|your-.*|us-east-1_XXXXXXXXX|us-east-1:xxxxxxxx.*/, '').trim();
+        config[key.trim()] = cleanValue;
+      }
+    });
+    
+    return config;
+  } catch (error) {
+    console.warn('Warning: Could not read .env.example, using fallback defaults');
+    // Fallback to hardcoded defaults if .env.example is missing
+    return {
+      VITE_AWS_REGION: 'us-east-1',
+      VITE_USER_POOL_ID: '',
+      VITE_USER_POOL_CLIENT_ID: '',
+      VITE_GRAPHQL_API_URL: '',
+      VITE_APP_TITLE: 'Multi-Agent Customer Support',
+      VITE_APP_VERSION: '1.0.0'
+    };
+  }
+}
 
 /**
  * Extract configuration from CDK outputs
@@ -59,7 +84,6 @@ function extractFromCDKOutputs(cdkOutputsPath) {
     return {
       VITE_USER_POOL_ID: stackOutputs.UserPoolId || stackOutputs.userPoolId || '',
       VITE_USER_POOL_CLIENT_ID: stackOutputs.UserPoolClientId || stackOutputs.userPoolClientId || '',
-      VITE_IDENTITY_POOL_ID: stackOutputs.IdentityPoolId || stackOutputs.identityPoolId || '',
       VITE_GRAPHQL_API_URL: stackOutputs.GraphQLApiUrl || stackOutputs.graphQLApiUrl || ''
     };
   } catch (error) {
@@ -90,8 +114,8 @@ function setupConfig() {
 
   console.log('Setting up Amplify configuration...');
   
-  // Start with default configuration
-  let config = { ...defaultConfig };
+  // Load template from .env.example (single source of truth)
+  let config = loadTemplateFromExample();
 
   // Try to extract from CDK outputs
   const cdkConfig = extractFromCDKOutputs(cdkOutputsPath);
@@ -99,7 +123,7 @@ function setupConfig() {
     config = { ...config, ...cdkConfig };
     console.log('Configuration extracted from CDK outputs');
   } else {
-    console.log('Using default configuration template');
+    console.log('Using template from .env.example');
     console.log('Please update the .env file with your actual CDK stack outputs');
   }
 

@@ -1,39 +1,12 @@
 // Application constants and utility types
 
-// Define enums locally to avoid circular imports
-enum AgentType {
-  ORDER_MANAGEMENT = 'ORDER_MANAGEMENT',
-  PRODUCT_RECOMMENDATION = 'PRODUCT_RECOMMENDATION',
-  PERSONALIZATION = 'PERSONALIZATION',
-  TROUBLESHOOTING = 'TROUBLESHOOTING',
-  SUPERVISOR = 'SUPERVISOR'
-}
-
-enum AgentHealthStatus {
-  HEALTHY = 'HEALTHY',
-  DEGRADED = 'DEGRADED',
-  UNHEALTHY = 'UNHEALTHY',
-  UNKNOWN = 'UNKNOWN'
-}
-
-enum MessageSender {
-  USER = 'USER',
-  AGENT = 'AGENT',
-  SYSTEM = 'SYSTEM'
-}
-
-enum SessionStatus {
-  ACTIVE = 'ACTIVE',
-  CLOSED = 'CLOSED',
-  PAUSED = 'PAUSED'
-}
-
-enum TaskStatus {
-  PENDING = 'PENDING',
-  IN_PROGRESS = 'IN_PROGRESS',
-  COMPLETED = 'COMPLETED',
-  FAILED = 'FAILED'
-}
+import {
+  AgentType,
+  AgentHealthStatus,
+  MessageSender,
+  SessionStatus,
+  TaskStatus
+} from './enums';
 
 // Agent Type Display Names
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {

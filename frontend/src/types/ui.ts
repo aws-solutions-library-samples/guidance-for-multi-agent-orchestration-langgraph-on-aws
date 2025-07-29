@@ -1,6 +1,38 @@
 // UI-specific types for React components and state management
 
-import type { AgentType, ChatMessage, ChatSession, AgentStatus } from './index';
+import type { AgentType, AgentHealthStatus, MessageSender, SessionStatus } from './enums';
+
+// Forward declarations to avoid circular imports
+interface ChatMessage {
+  id: string;
+  sessionId: string;
+  content: string;
+  sender: MessageSender;
+  agentResponse?: any;
+  metadata?: Record<string, any>;
+}
+
+interface ChatSession {
+  sessionId: string;
+  userId: string;
+  createdAt: Date;
+  lastActivity: Date;
+  status: SessionStatus;
+  messageCount: number;
+  metadata?: Record<string, any>;
+  messages?: ChatMessage[];
+}
+
+interface AgentStatus {
+  agentId: string;
+  type: AgentType;
+  status: AgentHealthStatus;
+  lastHeartbeat: Date;
+  activeConnections: number;
+  averageResponseTime?: number;
+  errorRate?: number;
+  metadata?: Record<string, any>;
+}
 
 // Component Props Types
 export interface ChatInterfaceProps {

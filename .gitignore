@@ -354,3 +354,39 @@ test_*
 *.db
 .mcp.json
 test-*
+# Lambda function compiled files
+infra/lib/streaming-api/resolver-function/*.js
+infra/lib/streaming-api/resolver-function/*.js.map
+infra/lib/streaming-api/resolver-function/*.d.ts
+infra/lib/streaming-api/stream-processor-function/*.js
+infra/lib/streaming-api/stream-processor-function/*.js.map
+infra/lib/streaming-api/stream-processor-function/*.d.ts
+
+# CDK build artifacts
+infra/cdk.out/
+infra/.cdk.staging/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/.vite/
+
+# CDK outputs
+cdk-outputs.json
+# Lambda function compiled files
+infra/lib/streaming-api/resolver-function/*.js
+infra/lib/streaming-api/resolver-function/*.js.map
+infra/lib/streaming-api/resolver-function/*.d.ts
+infra/lib/streaming-api/stream-processor-function/*.js
+infra/lib/streaming-api/stream-processor-function/*.js.map
+infra/lib/streaming-api/stream-processor-function/*.d.ts
+
+# CDK build artifacts
+infra/cdk.out/
+infra/.cdk.staging/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/.vite/
+
+# CDK outputs
+cdk-outputs.json

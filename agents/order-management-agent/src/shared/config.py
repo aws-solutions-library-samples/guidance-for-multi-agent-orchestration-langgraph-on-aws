@@ -23,10 +23,11 @@ class BaseConfig:
         self.aws_default_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
         self.aws_credentials_profile = os.getenv("AWS_CREDENTIALS_PROFILE", "default")
         
-        # AWS Bedrock Configuration
+        # AWS Bedrock Configuration - Claude 3.7 Sonnet Cross-Region Inference Profiles
+        # Environment variable takes precedence, but default to Claude 3.7 Sonnet inference profile
         self.bedrock_model_id = os.getenv(
             "BEDROCK_MODEL_ID", 
-            "anthropic.claude-3-sonnet-20240229-v1:0"
+            self._get_default_claude_37_inference_profile()
         )
         self.bedrock_temperature = float(os.getenv("BEDROCK_TEMPERATURE", "0.7"))
         self.bedrock_max_tokens = int(os.getenv("BEDROCK_MAX_TOKENS", "1000"))
@@ -60,6 +61,42 @@ class BaseConfig:
         
         # Validate configuration
         self._validate()
+
+    def _get_default_claude_37_inference_profile(self) -> str:
+        """
+        Get the appropriate Claude 3.7 Sonnet cross-region inference profile based on AWS region.
+        
+        Returns:
+            str: The inference profile ID for Claude 3.7 Sonnet
+        """
+        # Claude 3.7 Sonnet cross-region inference profiles by region
+        claude_37_profiles = {
+            # EU regions - all use the same EU inference profile (250 RPM)
+            "eu-west-1": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "eu-central-1": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", 
+            "eu-west-3": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "eu-north-1": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            
+            # US regions - all use the same US inference profile (250 RPM)
+            "us-east-1": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "us-east-2": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "us-west-2": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        }
+        
+        # Get the inference profile for the current region
+        region = self.aws_default_region
+        if region in claude_37_profiles:
+            profile_id = claude_37_profiles[region]
+            print(f"✅ Order Management Agent: Using Claude 3.7 Sonnet cross-region inference profile for {region}: {profile_id}")
+            print(f"   Quota: 250 requests/minute (125x improvement over previous Claude 3 Sonnet)")
+            return profile_id
+        else:
+            # Fallback to standard Claude 3.7 Sonnet for unsupported regions
+            fallback_model = "anthropic.claude-3-7-sonnet-20250219-v1:0"
+            print(f"⚠️  Order Management Agent: Region {region} not configured for Claude 3.7 Sonnet cross-region profiles")
+            print(f"   Falling back to standard model: {fallback_model}")
+            print(f"   Note: This will have much lower quota (~5 RPM vs 250 RPM)")
+            return fallback_model
     
     def _validate(self):
         """Validate configuration values."""

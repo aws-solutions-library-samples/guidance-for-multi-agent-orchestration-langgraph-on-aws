@@ -1,37 +1,5 @@
-// Enums matching GraphQL schema
-export enum AgentType {
-  ORDER_MANAGEMENT = 'ORDER_MANAGEMENT',
-  PRODUCT_RECOMMENDATION = 'PRODUCT_RECOMMENDATION',
-  PERSONALIZATION = 'PERSONALIZATION',
-  TROUBLESHOOTING = 'TROUBLESHOOTING',
-  SUPERVISOR = 'SUPERVISOR'
-}
-
-export enum AgentHealthStatus {
-  HEALTHY = 'HEALTHY',
-  DEGRADED = 'DEGRADED',
-  UNHEALTHY = 'UNHEALTHY',
-  UNKNOWN = 'UNKNOWN'
-}
-
-export enum MessageSender {
-  USER = 'USER',
-  AGENT = 'AGENT',
-  SYSTEM = 'SYSTEM'
-}
-
-export enum SessionStatus {
-  ACTIVE = 'ACTIVE',
-  CLOSED = 'CLOSED',
-  PAUSED = 'PAUSED'
-}
-
-export enum TaskStatus {
-  PENDING = 'PENDING',
-  IN_PROGRESS = 'IN_PROGRESS',
-  COMPLETED = 'COMPLETED',
-  FAILED = 'FAILED'
-}
+// Re-export enums from separate file to avoid circular imports
+export * from './enums';
 
 // Core Types
 export interface ChatMessage {
@@ -183,7 +151,3 @@ export interface PaginatedResponse<T> {
   nextToken?: string;
   hasMore: boolean;
 }
-
-// Re-export types from other files
-export * from './ui';
-export * from './graphql';

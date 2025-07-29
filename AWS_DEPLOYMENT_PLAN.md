@@ -3,6 +3,27 @@
 ## Overview
 This plan outlines the deployment of a multi-agent customer support system on AWS, where each agent runs in its own dedicated ECS Fargate cluster for isolation, scalability, and independent management.
 
+## Bedrock Model Configuration
+
+### Claude 3.7 Sonnet Cross-Region Inference Profiles
+The system is configured to use Claude 3.7 Sonnet cross-region inference profiles for optimal performance:
+
+**Automatic Region Selection:**
+- **EU Deployments**: Uses `eu.anthropic.claude-3-7-sonnet-20250219-v1:0`
+  - Routes across: eu-central-1, eu-north-1, eu-west-1, eu-west-3
+- **US Deployments**: Uses `us.anthropic.claude-3-7-sonnet-20250219-v1:0`
+  - Routes across: us-east-1, us-east-2, us-west-2
+
+**Configuration Method:**
+- Automatically determined by `AWS_DEFAULT_REGION` environment variable
+- Can be overridden using `BEDROCK_MODEL_ID` environment variable
+- All agents inherit the same model configuration for consistency
+
+**Benefits:**
+- Higher request limits for multi-agent workflows
+- Cross-region routing for improved availability
+- Eliminates throttling issues during concurrent agent operations
+
 ## Architecture Components
 
 ### 1. Network Infrastructure

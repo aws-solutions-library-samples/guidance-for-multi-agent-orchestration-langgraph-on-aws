@@ -1,17 +1,86 @@
 // GraphQL-specific types and utilities
 
-import type {
-  AgentType,
-  ChatMessage,
-  ChatSession,
-  AgentStatus,
-  TaskResult,
-  AggregatedResponse,
-  SendChatInput,
-  CreateSessionInput,
-  ExecuteTaskInput,
-  AggregateDataInput
-} from './index';
+import type { AgentType, AgentHealthStatus, MessageSender, SessionStatus, TaskStatus } from './enums';
+
+// Forward declarations to avoid circular imports
+interface ChatMessage {
+  id: string;
+  sessionId: string;
+  content: string;
+  sender: MessageSender;
+  agentResponse?: any;
+  metadata?: Record<string, any>;
+}
+
+interface ChatSession {
+  sessionId: string;
+  userId: string;
+  createdAt: Date;
+  lastActivity: Date;
+  status: SessionStatus;
+  messageCount: number;
+  metadata?: Record<string, any>;
+  messages?: ChatMessage[];
+}
+
+interface AgentStatus {
+  agentId: string;
+  type: AgentType;
+  status: AgentHealthStatus;
+  lastHeartbeat: Date;
+  activeConnections: number;
+  averageResponseTime?: number;
+  errorRate?: number;
+  metadata?: Record<string, any>;
+}
+
+interface TaskResult {
+  taskId: string;
+  agentType: AgentType;
+  status: TaskStatus;
+  result?: Record<string, any>;
+  error?: string;
+  startTime: Date;
+  endTime?: Date;
+  processingTime?: number;
+}
+
+interface AggregatedResponse {
+  requestId: string;
+  query: string;
+  responses: any[];
+  totalAgents: number;
+  successfulResponses: number;
+  failedResponses: number;
+  averageResponseTime: number;
+  timestamp: Date;
+}
+
+interface SendChatInput {
+  sessionId: string;
+  message: string;
+  metadata?: Record<string, any>;
+}
+
+interface CreateSessionInput {
+  userId: string;
+  metadata?: Record<string, any>;
+}
+
+interface ExecuteTaskInput {
+  agentType: AgentType;
+  task: string;
+  priority?: number;
+  timeout?: number;
+  metadata?: Record<string, any>;
+}
+
+interface AggregateDataInput {
+  query: string;
+  agentTypes?: AgentType[];
+  timeout?: number;
+  metadata?: Record<string, any>;
+}
 
 // GraphQL Query Result Types
 export interface QueryResult<T> {
