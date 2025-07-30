@@ -7,6 +7,7 @@ import { EcsStack } from '../lib/ecs-stack';
 import { LoadBalancerStack } from '../lib/load-balancer-stack';
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { StreamingApiStack } from '../lib/streaming-api-stack';
+import { BedrockKnowledgeBaseStack } from '../lib/bedrock-knowledge-base-stack';
 
 const app = new cdk.App();
 
@@ -56,6 +57,15 @@ const ecsStack = new EcsStack(app, `${stackPrefix}-ECS-${environment}`, {
   stackName: `${stackPrefix}-ECS-${environment}`,
 });
 
+// Bedrock Knowledge Base Stack - Vector DB and Knowledge Base
+const bedrockKnowledgeBaseStack = new BedrockKnowledgeBaseStack(app, `${stackPrefix}-BedrockKB-${environment}`, {
+  env,
+  vpc: networkStack.vpc,
+  environment,
+  description: 'Bedrock Knowledge Base for unstructured data',
+  stackName: `${stackPrefix}-BedrockKB-${environment}`,
+});
+
 // Streaming API Stack - AppSync GraphQL API
 const streamingApiStack = new StreamingApiStack(app, `${stackPrefix}-StreamingAPI-${environment}`, {
   env,
@@ -79,6 +89,7 @@ const monitoringStack = new MonitoringStack(app, `${stackPrefix}-Monitoring-${en
 // Add dependencies
 databaseStack.addDependency(networkStack);
 loadBalancerStack.addDependency(networkStack);
+bedrockKnowledgeBaseStack.addDependency(networkStack);
 ecsStack.addDependency(databaseStack);
 ecsStack.addDependency(loadBalancerStack);
 streamingApiStack.addDependency(networkStack);
@@ -86,7 +97,7 @@ streamingApiStack.addDependency(ecsStack);
 monitoringStack.addDependency(ecsStack);
 
 // Add tags to all stacks
-const stacks = [networkStack, databaseStack, ecsStack, loadBalancerStack, streamingApiStack, monitoringStack];
+const stacks = [networkStack, databaseStack, ecsStack, loadBalancerStack, bedrockKnowledgeBaseStack, streamingApiStack, monitoringStack];
 stacks.forEach(stack => {
   cdk.Tags.of(stack).add('Project', 'MultiAgentSystem');
   cdk.Tags.of(stack).add('Environment', environment);
