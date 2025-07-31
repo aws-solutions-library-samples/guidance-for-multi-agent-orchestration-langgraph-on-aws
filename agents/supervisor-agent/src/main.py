@@ -304,10 +304,13 @@ async def agents_status() -> Dict[str, Any]:
 
     try:
         agent_health = await supervisor_agent.client.check_all_agents_health()
+        config_info = supervisor_agent.client.get_agent_config_info()
         return {
             "agents": agent_health,
             "available_agents": supervisor_agent.client.get_available_agents(),
-            "agent_urls": supervisor_agent.client.agent_urls,
+            "agent_urls": config_info.get("agent_configs", {}),
+            "environment": config_info.get("environment"),
+            "service_discovery": config_info.get("service_discovery"),
         }
     except Exception as e:
         logger.error(f"Failed to get agent status: {e}")

@@ -98,6 +98,7 @@ class PersonalizationAgent:
                 "temperature": config.bedrock_temperature,
                 "max_tokens": config.bedrock_max_tokens,
                 "region_name": config.aws_default_region,
+                # "performance_config": {"latency": "optimized"},
             }
 
             # Add credential profile for local development

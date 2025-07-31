@@ -12,7 +12,7 @@ import time
 from typing import Dict, List, Optional, Any, Annotated, TypedDict, Literal
 from enum import Enum
 
-from langchain_aws import ChatBedrock
+from langchain_aws import ChatBedrockConverse
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.types import Command
@@ -104,7 +104,7 @@ class SupervisorAgent:
         # Build the multi-agent graph
         self.graph = self._build_graph()
 
-    def _initialize_llm(self) -> ChatBedrock:
+    def _initialize_llm(self) -> ChatBedrockConverse:
         """Initialize the AWS Bedrock LLM."""
         try:
             # Determine if we should use credential profile (for local development)
@@ -114,11 +114,10 @@ class SupervisorAgent:
 
             llm_kwargs = {
                 "model_id": config.bedrock_model_id,
-                "model_kwargs": {
-                    "temperature": config.bedrock_temperature,
-                    "max_tokens": config.bedrock_max_tokens,
-                },
+                "temperature": config.bedrock_temperature,
+                "max_tokens": config.bedrock_max_tokens,
                 "region_name": config.aws_default_region,
+                # "performance_config": {"latency": "optimized"},
             }
 
             # Add credential profile for local development
@@ -132,7 +131,7 @@ class SupervisorAgent:
                     "Using default AWS credential chain (IAM roles, environment variables, etc.)"
                 )
 
-            llm = ChatBedrock(**llm_kwargs)
+            llm = ChatBedrockConverse(**llm_kwargs)
             logger.info("Successfully initialized Bedrock LLM")
             return llm
         except Exception as e:
@@ -353,16 +352,18 @@ class SupervisorAgent:
         # Stream from agent via HTTP
         try:
             final_response = None
-            async for update in self.client.call_agent_stream(agent_type, agent_request):
+            async for update in self.client.call_agent_stream(
+                agent_type, agent_request
+            ):
                 # Forward sub-agent updates with supervisor context
                 yield {
                     "type": "sub_agent_update",
                     "agent_type": agent_type,
                     "data": update,
                     "session_id": state["session_id"],
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
-                
+
                 # Capture final response for state update
                 if update.get("type") == "complete":
                     # Get the final response from the completed stream
@@ -370,7 +371,9 @@ class SupervisorAgent:
 
             # Update state with final response
             agent_responses = state.get("agent_responses", {})
-            agent_responses[agent_type] = final_response or {"response": f"{agent_type} completed"}
+            agent_responses[agent_type] = final_response or {
+                "response": f"{agent_type} completed"
+            }
 
             # Remove this agent from agents_to_call
             agents_to_call = state.get("agents_to_call", [])
@@ -384,10 +387,10 @@ class SupervisorAgent:
                 "data": {
                     "agent_responses": agent_responses,
                     "agents_to_call": agents_to_call,
-                    "next_agent": self._get_next_agent(agents_to_call)
+                    "next_agent": self._get_next_agent(agents_to_call),
                 },
                 "session_id": state["session_id"],
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
 
         except Exception as e:
@@ -405,10 +408,10 @@ class SupervisorAgent:
                 "data": {
                     "error": str(e),
                     "agents_to_call": agents_to_call,
-                    "next_agent": self._get_next_agent(agents_to_call)
+                    "next_agent": self._get_next_agent(agents_to_call),
                 },
                 "session_id": state["session_id"],
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
 
     async def _synthesizer_node(self, state: GraphState) -> Dict[str, Any]:
