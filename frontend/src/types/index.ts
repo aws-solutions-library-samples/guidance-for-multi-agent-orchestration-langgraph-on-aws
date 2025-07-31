@@ -1,5 +1,6 @@
 // Re-export enums from separate file to avoid circular imports
 export * from './enums';
+import type { MessageSender, AgentType, AgentHealthStatus, SessionStatus, TaskStatus } from './enums';
 
 // Core Types
 export interface ChatMessage {
@@ -7,6 +8,7 @@ export interface ChatMessage {
   sessionId: string;
   content: string;
   sender: MessageSender;
+  timestamp: string; // AWSDateTime as string from GraphQL
   agentResponse?: AgentResponse;
   metadata?: Record<string, any>;
 }
@@ -17,7 +19,7 @@ export interface AgentResponse {
   confidence?: number;
   processingTime?: number;
   metadata?: Record<string, any>;
-  timestamp: Date;
+  timestamp: string; // AWSDateTime as string from GraphQL
 }
 
 export interface ChatSession {

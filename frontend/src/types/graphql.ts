@@ -2,17 +2,27 @@
 
 import type { AgentType, AgentHealthStatus, MessageSender, SessionStatus, TaskStatus } from './enums';
 
-// Forward declarations to avoid circular imports
-interface ChatMessage {
+// Core GraphQL types
+export interface ChatMessage {
   id: string;
   sessionId: string;
   content: string;
   sender: MessageSender;
-  agentResponse?: any;
+  timestamp: string; // AWSDateTime as string
+  agentResponse?: AgentResponse;
   metadata?: Record<string, any>;
 }
 
-interface ChatSession {
+export interface AgentResponse {
+  agentType: AgentType;
+  content: string;
+  confidence?: number;
+  processingTime?: number;
+  metadata?: Record<string, any>;
+  timestamp: string; // AWSDateTime as string
+}
+
+export interface ChatSession {
   sessionId: string;
   userId: string;
   createdAt: Date;

@@ -4,10 +4,7 @@ import { useAgentStatuses } from '../../hooks/useAmplifyGraphQL';
 import AgentMessage from './AgentMessage';
 import AgentAvatar from './AgentAvatar';
 import { AgentType } from '../../types';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Badge } from '../ui/badge';
-import { cn, announceToScreenReader } from '../../lib/utils';
+import { announceToScreenReader } from '../../lib/utils';
 
 interface MultiAgentChatInterfaceProps {
   sessionId?: string;
@@ -25,7 +22,7 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [showAgentStatus, setShowAgentStatus] = useState(false);
-  const [isInputFocused, setIsInputFocused] = useState(false);
+
 
   // AI Chat integration
   const {
@@ -86,19 +83,35 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
     }
   };
 
-  // Simple input change handler as backup
-  const handleInputChangeLocal = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    handleInputChange(e);
-  }, [handleInputChange]);
+
 
   // Handle form submission with accessibility
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim()) {
       announceToScreenReader('Message sent');
       handleSubmit(e);
     }
   };
+
+  // Auto-create session when user starts typing (if no session exists)
+  const handleInputChangeWithSessionCreation = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleInputChange(e);
+    
+    // Auto-create session if none exists and user is typing
+    if (!currentSessionId && e.target.value.trim() && !isLoading) {
+      try {
+        const newSessionId = await createNewSession();
+        if (newSessionId) {
+          announceToScreenReader('New chat session created');
+          onSessionCreate?.(newSessionId);
+        }
+      } catch (error) {
+        console.error('Failed to create session:', error);
+        // Don't show error to user for background session creation
+      }
+    }
+  }, [handleInputChange, currentSessionId, isLoading, createNewSession, onSessionCreate]);
 
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -147,9 +160,6 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
       <div className="chat-header">
         <div className="chat-header-content">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 className="chat-title">
-              Multi-Agent Customer Support
-            </h1>
             <div className="connection-status">
               <div className={`status-dot ${getConnectionStatusColor()}`} aria-hidden="true" />
               <span 
@@ -338,9 +348,8 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
               id="chat-input"
               type="text"
               value={input}
-              onChange={handleInputChangeLocal}
-              onFocus={() => setIsInputFocused(true)}
-              onBlur={() => setIsInputFocused(false)}
+              onChange={handleInputChangeWithSessionCreation}
+
               placeholder="Type your message..."
               disabled={isLoading}
               className="chat-input"
@@ -374,18 +383,7 @@ const MultiAgentChatInterface: React.FC<MultiAgentChatInterfaceProps> = ({
           Type your message and press Enter or click Send to chat with our AI agents
         </div>
 
-        {!currentSessionId && (
-          <div className="session-prompt">
-            <button
-              onClick={handleCreateSession}
-              className="session-link"
-              aria-label="Create a new chat session to start chatting"
-            >
-              Create a new session
-            </button>
-            {' '}to start chatting
-          </div>
-        )}
+
       </div>
     </div>
   );

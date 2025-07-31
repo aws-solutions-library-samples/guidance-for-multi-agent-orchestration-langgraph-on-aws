@@ -146,10 +146,13 @@ export function useAIAmplifyChat(options: UseAIAmplifyChat = {}) {
 
     if (!input.trim() || isLoading) return;
 
+    // Store the input value before clearing it
+    const inputValue = input.trim();
+
     const userMessage: AIMessage = {
       id: `temp-${Date.now()}`,
       role: 'user',
-      content: input,
+      content: inputValue,
       createdAt: new Date()
     };
 
@@ -160,7 +163,7 @@ export function useAIAmplifyChat(options: UseAIAmplifyChat = {}) {
     setError(null);
 
     try {
-      const result = await sendMessage(input);
+      const result = await sendMessage(inputValue);
 
       // Remove temporary message and add real ones
       setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
@@ -201,7 +204,7 @@ export function useAIAmplifyChat(options: UseAIAmplifyChat = {}) {
 
       // Remove optimistic user message on error
       setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
-      setInput(input); // Restore input
+      setInput(inputValue); // Restore input with the stored value
     } finally {
       setIsLoading(false);
     }
