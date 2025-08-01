@@ -18,7 +18,8 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from shared.models import AgentRequest, AgentResponse, AgentType, ToolCall
 from shared.utils import truncate_text
-from sqlite_tools import SQLiteQueryExecutor
+from postgresql_tools import PostgreSQLQueryExecutor
+from db_init import DatabaseInitializer, DatabaseInitializationError
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,8 @@ class SimpleGraphOrderAgent:
     def __init__(self):
         """Initialize the simplified graph-based order management agent."""
         self.llm = self._initialize_llm()
-        self.sql_executor = SQLiteQueryExecutor()
+        self.sql_executor = PostgreSQLQueryExecutor(config)
+        self.db_initializer = DatabaseInitializer(config)
         self.agent_type = AgentType.ORDER_MANAGEMENT
 
         # Create tools and bind to LLM
@@ -54,6 +56,51 @@ class SimpleGraphOrderAgent:
 
         # Create the StateGraph
         self.graph = self._create_state_graph()
+    
+    async def startup(self):
+        """Initialize the database connection pool and perform startup tasks."""
+        logger.info("Starting up order management agent...")
+        
+        try:
+            # Initialize database schema and test data
+            logger.info("Initializing database schema and test data...")
+            initialization_result = await self.db_initializer.initialize_database(include_test_data=True)
+            
+            if initialization_result['schema_created']:
+                logger.info("✅ Database schema created successfully")
+            else:
+                logger.info("ℹ️  Database schema already exists")
+                
+            if initialization_result['test_data_inserted']:
+                logger.info("✅ Test data inserted successfully")
+            else:
+                logger.info("ℹ️  Test data already exists")
+                
+            if initialization_result['verification_passed']:
+                logger.info("✅ Database schema verification passed")
+            else:
+                logger.warning("⚠️  Database schema verification failed")
+                logger.warning(f"Verification details: {initialization_result.get('verification_details', {})}")
+            
+            # Initialize the SQL executor connection pool
+            await self.sql_executor.initialize_pool()
+            
+            logger.info("🚀 Order management agent startup complete")
+            
+        except DatabaseInitializationError as e:
+            logger.error(f"❌ Database initialization failed during startup: {e}")
+            logger.error("   The agent will not be able to access the database")
+            logger.error("   Please check your DATABASE_CLUSTER_ARN and DATABASE_SECRET_ARN configuration")
+            raise
+        except Exception as e:
+            logger.error(f"❌ Unexpected error during agent startup: {e}")
+            raise
+    
+    async def shutdown(self):
+        """Clean up resources during shutdown."""
+        logger.info("Shutting down order management agent...")
+        await self.sql_executor.close_pool()
+        logger.info("Order management agent shutdown complete")
 
     def _initialize_llm(self) -> ChatBedrockConverse:
         """Initialize the AWS Bedrock LLM."""
@@ -735,9 +782,8 @@ class SimpleGraphOrderAgent:
     async def test_database_connection(self) -> bool:
         """Test database connection."""
         try:
-            async with self.sql_executor:
-                result = await self.sql_executor.execute_query("SELECT 1 as test")
-                return result.error is None
+            result = await self.sql_executor.execute_query("SELECT 1 as test")
+            return result.error is None
         except Exception as e:
             logger.error(f"Database connection test failed: {e}")
             return False

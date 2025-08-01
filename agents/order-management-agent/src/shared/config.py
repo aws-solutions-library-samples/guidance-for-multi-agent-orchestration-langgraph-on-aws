@@ -220,12 +220,34 @@ class OrderAgentConfig(DatabaseConfig):
 
         self.service_name = "order-management-agent"
 
-        # Order Management Database
+        # Order Management Database - PostgreSQL with DataAPI
+        self.db_name = os.getenv("ORDER_DB_NAME", "multiagent")
+        
+        # RDS DataAPI configuration - check both naming conventions
+        self.rds_cluster_arn = os.getenv("DATABASE_CLUSTER_ARN") or os.getenv("RDS_CLUSTER_ARN")
+        self.rds_secret_arn = os.getenv("DATABASE_SECRET_ARN") or os.getenv("RDS_SECRET_ARN")
+        
+        # Legacy connection parameters (kept for compatibility)
         self.db_host = os.getenv("ORDER_DB_HOST", "localhost")
         self.db_port = int(os.getenv("ORDER_DB_PORT", "5432"))
-        self.db_name = os.getenv("ORDER_DB_NAME", "order_management")
         self.db_user = os.getenv("ORDER_DB_USER", "postgres")
         self.db_password = os.getenv("ORDER_DB_PASSWORD", "password")
+        
+        # DataAPI query timeout
+        self.db_query_timeout = int(os.getenv("DB_QUERY_TIMEOUT", "15"))
+    
+    def is_dataapi_configured(self) -> bool:
+        """Check if RDS Data API is properly configured."""
+        return bool(self.rds_cluster_arn and self.rds_secret_arn)
+    
+    def get_dataapi_config(self) -> Dict[str, str]:
+        """Get RDS Data API configuration."""
+        return {
+            "cluster_arn": self.rds_cluster_arn,
+            "secret_arn": self.rds_secret_arn,
+            "database": self.db_name,
+            "region": self.aws_default_region
+        }
 
 
 class ProductAgentConfig(DatabaseConfig):

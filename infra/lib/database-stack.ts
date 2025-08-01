@@ -41,7 +41,7 @@ export class DatabaseStack extends cdk.Stack {
     // Create parameter group for Aurora PostgreSQL optimization
     const parameterGroup = new rds.ParameterGroup(this, 'DatabaseParameterGroup', {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
-        version: rds.AuroraPostgresEngineVersion.VER_15_3,
+        version: rds.AuroraPostgresEngineVersion.VER_15_10,
       }),
       description: 'Parameter group for multi-agent Aurora PostgreSQL cluster',
       parameters: {
@@ -57,7 +57,7 @@ export class DatabaseStack extends cdk.Stack {
     // Create Aurora PostgreSQL cluster with pure Serverless v2
     this.database = new rds.DatabaseCluster(this, 'Database', {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
-        version: rds.AuroraPostgresEngineVersion.VER_15_3,
+        version: rds.AuroraPostgresEngineVersion.VER_15_10,
       }),
       credentials: rds.Credentials.fromSecret(this.databaseSecret),
       defaultDatabaseName: 'multiagent',
@@ -148,11 +148,7 @@ export class DatabaseStack extends cdk.Stack {
 
     // Output database cluster ARN for RDS Data API
     new cdk.CfnOutput(this, 'DatabaseClusterArn', {
-      value: cdk.Stack.of(this).formatArn({
-        service: 'rds',
-        resource: 'cluster',
-        resourceName: this.database.clusterIdentifier,
-      }),
+      value: this.database.clusterArn,
       description: 'Aurora cluster ARN for RDS Data API',
       exportName: `${this.stackName}-DatabaseClusterArn`,
     });

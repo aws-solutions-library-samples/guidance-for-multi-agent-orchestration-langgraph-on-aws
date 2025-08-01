@@ -191,6 +191,18 @@ export class EcsStack extends cdk.Stack {
       })
     );
 
+    // Add permissions to read secrets (needed for RDS Data API)
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'secretsmanager:GetSecretValue',
+          'secretsmanager:DescribeSecret',
+        ],
+        resources: [databaseSecret.secretArn],
+      })
+    );
+
     // Add permissions for Systems Manager Session Manager (for debugging)
     taskRole.addToPolicy(
       new iam.PolicyStatement({

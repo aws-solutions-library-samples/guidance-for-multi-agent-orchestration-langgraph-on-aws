@@ -34,6 +34,9 @@ async def lifespan(app: FastAPI):
         logger.info("Initializing Order Management Agent...")
         agent = SimpleGraphOrderAgent()
         
+        # Initialize database connection pool
+        await agent.startup()
+        
         # Test connections
         logger.info("Testing LLM connection...")
         llm_works = await agent.test_llm_connection()
@@ -45,9 +48,12 @@ async def lifespan(app: FastAPI):
         logger.info("Testing database connection...")
         db_works = await agent.test_database_connection()
         if not db_works:
-            logger.warning("Database connection test failed, using mock data")
+            logger.error("❌ Database connection test failed")
+            logger.error("   DATABASE_CLUSTER_ARN and DATABASE_SECRET_ARN must be configured")
+            raise Exception("Database connection required for order management agent")
         else:
             logger.info("✅ Database connection successful")
+            logger.info("🗄️  Connected to PostgreSQL via RDS Data API")
         
         logger.info("🚀 Order Management Agent service is ready!")
         yield
@@ -57,6 +63,8 @@ async def lifespan(app: FastAPI):
         raise
     finally:
         logger.info("Shutting down Order Management Agent...")
+        if agent:
+            await agent.shutdown()
 
 
 # Create FastAPI app
@@ -318,7 +326,7 @@ async def service_info():
             "check_return_status",
             "get_order_summary"
         ],
-        "database": "SQLite with test data"
+        "database": "PostgreSQL with connection pooling"
     }
 
 
