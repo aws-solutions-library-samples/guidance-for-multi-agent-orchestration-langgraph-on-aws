@@ -35,7 +35,9 @@ from structured_models import (
     ResponseSynthesis,
     ErrorResponse,
     CustomerNeedAssessment,
+    SupervisorDecision,
 )
+from dynamodb_session_saver import DynamoDBSaver, create_dynamodb_table
 
 config = supervisor_config.config
 logger = logging.getLogger(__name__)
@@ -54,6 +56,10 @@ class GraphState(TypedDict):
 
     # Intent analysis results
     intent_info: Optional[Dict[str, Any]]
+
+    # Direct response capability
+    can_respond_directly: Optional[bool]
+    direct_response: Optional[str]
 
     # Agent selection
     selected_agents: List[str]
@@ -100,6 +106,10 @@ class SupervisorAgent:
         self.response_synthesizer = self.llm.with_structured_output(ResponseSynthesis)
         self.error_handler = self.llm.with_structured_output(ErrorResponse)
         self.need_assessor = self.llm.with_structured_output(CustomerNeedAssessment)
+        self.supervisor_decision = self.llm.with_structured_output(SupervisorDecision)
+
+        # Initialize session management
+        self.checkpointer = self._initialize_session_manager()
 
         # Build the multi-agent graph
         self.graph = self._build_graph()
@@ -137,6 +147,30 @@ class SupervisorAgent:
         except Exception as e:
             logger.error(f"Failed to initialize Bedrock LLM: {e}")
             raise
+
+    def _initialize_session_manager(self) -> Optional[DynamoDBSaver]:
+        """Initialize the DynamoDB session manager."""
+        try:
+            if not config.enable_session_persistence:
+                logger.info("Session persistence disabled")
+                return None
+
+            # Initialize the checkpointer
+            checkpointer = DynamoDBSaver(
+                table_name=config.dynamodb_table_name,
+                region_name=config.aws_default_region,
+                endpoint_url=config.dynamodb_endpoint_url,
+            )
+
+            logger.info(
+                f"Successfully initialized DynamoDB session manager with table: {config.dynamodb_table_name}"
+            )
+            return checkpointer
+
+        except Exception as e:
+            logger.error(f"Failed to initialize session manager: {e}")
+            logger.warning("Continuing without session persistence")
+            return None
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph multi-agent graph."""
@@ -192,50 +226,72 @@ class SupervisorAgent:
         # Synthesizer goes to END
         workflow.add_edge(AgentNode.SYNTHESIZER, END)
 
-        # Compile the graph
-        return workflow.compile()
+        # Compile the graph with checkpointer if available
+        if self.checkpointer:
+            logger.info("Compiling graph with DynamoDB session persistence")
+            return workflow.compile(checkpointer=self.checkpointer)
+        else:
+            logger.info("Compiling graph without session persistence")
+            return workflow.compile()
 
     async def _supervisor_node(self, state: GraphState) -> Command:
         """
-        Supervisor node that analyzes intent and selects agents.
+        Supervisor node that analyzes intent, selects agents, and can provide direct responses.
 
-        Returns Command to route to appropriate agent.
+        Returns Command to route to appropriate agent or synthesizer.
         """
         logger.info(f"Supervisor processing request for session {state['session_id']}")
 
         # Record start time
         start_time = time.time()
 
-        # Step 1: Analyze customer intent
-        intent_info = await self._analyze_intent(state["customer_message"])
-        logger.info(f"Detected intent: {intent_info}")
+        # Combined intent analysis and agent selection with direct response capability
+        print("================================")
+        print(state["messages"])
+        print("================================")
+        supervisor_decision = await self._make_supervisor_decision(state)
+        logger.info(f"Supervisor decision: {supervisor_decision}")
 
-        # Step 2: Select appropriate agents
-        selected_agents = await self._select_agents(
-            state["customer_message"], intent_info
-        )
-        logger.info(f"Selected agents: {selected_agents}")
+        # Convert to legacy format for compatibility
+        intent_info = {
+            "primary_intent": supervisor_decision.primary_intent,
+            "all_intents": supervisor_decision.all_intents,
+            "confidence": supervisor_decision.intent_confidence,
+            "requires_multiple_agents": len(supervisor_decision.selected_agents) > 1,
+            "customer_id_mentioned": supervisor_decision.customer_id_mentioned,
+            "reasoning": supervisor_decision.reasoning,
+        }
 
         # Update state with analysis results
         update_state = {
             "intent_info": intent_info,
-            "selected_agents": selected_agents,
-            "agents_to_call": selected_agents.copy(),
+            "can_respond_directly": supervisor_decision.can_respond_directly,
+            "direct_response": supervisor_decision.direct_response,
+            "selected_agents": supervisor_decision.selected_agents,
+            "agents_to_call": supervisor_decision.selected_agents.copy(),
             "agent_responses": {},
             "start_time": start_time,
             "messages": [
                 {
                     "role": "system",
-                    "content": f"Intent analyzed: {intent_info['primary_intent']}",
+                    "content": f"Intent analyzed: {supervisor_decision.primary_intent}",
                 }
             ],
         }
 
-        # Route to first agent or synthesizer if no agents selected
-        if selected_agents:
-            next_agent = selected_agents[0]
+        # Route based on decision
+        if supervisor_decision.can_respond_directly:
+            # Go directly to synthesizer with the direct response
+            logger.info("Supervisor providing direct response")
+            return Command(goto=AgentNode.SYNTHESIZER, update=update_state)
+        elif supervisor_decision.selected_agents:
+            # Route to first agent
+            next_agent = supervisor_decision.selected_agents[0]
+            logger.info(f"Routing to first agent: {next_agent}")
             return Command(goto=next_agent, update=update_state)
         else:
+            # Fallback to synthesizer
+            logger.info("No agents selected, going to synthesizer")
             return Command(goto=AgentNode.SYNTHESIZER, update=update_state)
 
     async def _order_management_node(self, state: GraphState) -> Command:
@@ -416,19 +472,25 @@ class SupervisorAgent:
 
     async def _synthesizer_node(self, state: GraphState) -> Dict[str, Any]:
         """
-        Synthesizer node that combines all agent responses.
+        Synthesizer node that combines all agent responses or uses direct supervisor response.
 
         Returns final state update with synthesized response.
         """
-        logger.info("Synthesizing agent responses")
+        logger.info("Synthesizing response")
 
-        # Synthesize response
-        synthesized_response = await self._synthesize_response(
-            state["customer_message"], state.get("agent_responses", {})
-        )
-
-        # Set default confidence score (removed dependency on agent confidence scores)
-        confidence_score = 0.8 if state.get("agent_responses") else 0.1
+        # Check if supervisor provided direct response
+        if state.get("can_respond_directly") and state.get("direct_response"):
+            logger.info("Using direct supervisor response")
+            synthesized_response = state["direct_response"]
+            confidence_score = 0.9  # High confidence for direct responses
+        else:
+            # Synthesize from agent responses
+            logger.info("Synthesizing from agent responses")
+            synthesized_response = await self._synthesize_response(
+                state["customer_message"], state.get("agent_responses", {})
+            )
+            # Set confidence score based on agent responses
+            confidence_score = 0.8 if state.get("agent_responses") else 0.1
 
         # Calculate processing time
         processing_time = time.time() - state.get("start_time", time.time())
@@ -458,6 +520,26 @@ class SupervisorAgent:
             return agents_to_call[0]
         return AgentNode.SYNTHESIZER
 
+    def _get_graph_config(self, session_id: str) -> Dict[str, Any]:
+        """
+        Get graph configuration for session management.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Graph configuration dictionary
+        """
+        if self.checkpointer:
+            return {
+                "configurable": {
+                    "thread_id": session_id,
+                    "checkpoint_ns": "supervisor",
+                }
+            }
+        else:
+            return {}
+
     async def process_request_stream(self, request: SupervisorRequest):
         """
         Process a customer support request using the LangGraph with streaming support.
@@ -479,8 +561,13 @@ class SupervisorAgent:
                 "messages": [],
             }
 
+            # Prepare configuration for session management
+            graph_config = self._get_graph_config(request.session_id)
+
             # Stream the graph execution with updates mode
-            async for chunk in self.graph.astream(initial_state, stream_mode="updates"):
+            async for chunk in self.graph.astream(
+                initial_state, config=graph_config, stream_mode="updates"
+            ):
                 # Yield progress updates
                 yield {
                     "type": "progress",
@@ -519,9 +606,12 @@ class SupervisorAgent:
                 "messages": [],
             }
 
+            # Prepare configuration for session management
+            graph_config = self._get_graph_config(request.session_id)
+
             # Stream with multiple modes: updates for progress, messages for LLM tokens
             async for stream_type, chunk in self.graph.astream(
-                initial_state, stream_mode=["updates", "messages"]
+                initial_state, config=graph_config, stream_mode=["updates", "messages"]
             ):
                 if stream_type == "updates":
                     # Yield progress updates
@@ -573,12 +663,19 @@ class SupervisorAgent:
                 "customer_id": request.customer_id,
                 "conversation_history": request.conversation_history,
                 "context": request.context,
-                "messages": [],
+                "messages": [
+                    {"role": "user", "content": request.customer_message},
+                ],
             }
+
+            # Prepare configuration for session management
+            graph_config = self._get_graph_config(request.session_id)
 
             # Run the graph and get final state
             final_state = None
-            async for chunk in self.graph.astream(initial_state, stream_mode="values"):
+            async for chunk in self.graph.astream(
+                initial_state, config=graph_config, stream_mode="values"
+            ):
                 final_state = chunk
 
             # Helper function to format agent responses for validation
@@ -659,6 +756,113 @@ class SupervisorAgent:
         except Exception as e:
             logger.error(f"Error processing request: {e}")
             return await self._handle_error(request, str(e))
+
+    async def _make_supervisor_decision(self, state: GraphState) -> SupervisorDecision:
+        """
+        Make combined supervisor decision including intent analysis, agent selection, and direct response capability.
+        Uses complete state context including conversation history.
+
+        Args:
+            state: Complete graph state with all context
+
+        Returns:
+            SupervisorDecision with intent, agents, and potential direct response
+        """
+        try:
+            # Create comprehensive prompt for supervisor decision using the complete state
+            supervisor_prompt = f"""
+            You are a customer support supervisor AI. Analyze the complete context and make a decision about how to handle this customer request.
+
+            CURRENT STATE:
+            Customer Message: "{state['customer_message']}"
+            Session ID: {state['session_id']}
+            Customer ID: {state.get('customer_id', 'Not provided')}
+            Conversation History: {state.get('conversation_history', [])}
+            Additional Context: {state.get('context', {})}
+            Messages: {state.get('messages', [])}
+
+            DECISION CRITERIA:
+
+            1. DIRECT RESPONSE - You can respond directly (without calling sub-agents) for:
+               - Simple greetings, thank you messages, or pleasantries
+               - General company information questions (hours, policies, contact info)
+               - Basic FAQ that doesn't require specific data lookup
+               - Requests that are too vague to route to specific agents
+               - Follow-up acknowledgments or clarifications
+
+            2. SUB-AGENT ROUTING - Route to specialized agents for:
+               - order_management: Order status, tracking, shipping, returns, exchanges, inventory
+               - product_recommendation: Product suggestions, reviews, purchase history, recommendations
+               - troubleshooting: Technical issues, problems, FAQ, warranty, how-to questions
+               - personalization: Account info, preferences, customer profile, browsing history
+
+            INTENT CATEGORIES:
+            - order: Order-related requests
+            - product: Product information and recommendations
+            - troubleshooting: Technical support and problem resolution
+            - personalization: Account and preference management
+            - general: Greetings, company info, vague requests
+
+            RULES:
+            - If customer ID is mentioned, consider including personalization agent
+            - For complex requests, you may select multiple agents (max 3)
+            - Consider execution order (personalization first if customer context needed)
+            - Prefer direct response for simple, generic questions
+            - Use conversation history and messages to understand context and intent
+            - Be decisive - either respond directly OR route to agents, not both
+
+            Analyze the complete state and provide your decision.
+            """
+
+            decision = await self.supervisor_decision.ainvoke(supervisor_prompt)
+
+            logger.info(f"Supervisor decision reasoning: {decision.reasoning}")
+            logger.info(f"Can respond directly: {decision.can_respond_directly}")
+            if decision.can_respond_directly:
+                logger.info(f"Direct response: {decision.direct_response}")
+            else:
+                logger.info(f"Selected agents: {decision.selected_agents}")
+
+            # Validate and clean up the decision
+            if decision.can_respond_directly and not decision.direct_response:
+                # If marked as direct response but no response provided, fallback to agent routing
+                decision.can_respond_directly = False
+                decision.selected_agents = ["order_management"]  # Safe fallback
+
+            # Validate selected agents
+            valid_agents = [
+                "order_management",
+                "product_recommendation",
+                "troubleshooting",
+                "personalization",
+            ]
+            decision.selected_agents = [
+                agent for agent in decision.selected_agents if agent in valid_agents
+            ][
+                :3
+            ]  # Limit to 3 agents max
+
+            # Ensure execution order matches selected agents
+            decision.execution_order = decision.selected_agents.copy()
+
+            return decision
+
+        except Exception as e:
+            logger.warning(f"Supervisor decision failed, using fallback: {e}")
+            # Fallback decision
+            return SupervisorDecision(
+                primary_intent="general",
+                all_intents=["general"],
+                intent_confidence=0.5,
+                can_respond_directly=False,
+                selected_agents=["order_management"],
+                execution_order=["order_management"],
+                parallel_execution=True,
+                customer_id_mentioned="cust" in state["customer_message"].lower(),
+                key_entities=[],
+                urgency_level="medium",
+                reasoning="Fallback decision due to error in analysis",
+            )
 
     async def _analyze_intent(self, message: str) -> Dict[str, Any]:
         """
@@ -968,15 +1172,29 @@ class SupervisorAgent:
             # Test LLM connection
             llm_healthy = await self._test_llm_connection()
 
+            # Test session management
+            session_healthy = await self._test_session_connection()
+
             overall_status = "healthy"
             if not llm_healthy:
                 overall_status = "degraded"
             elif not all(agent_health.values()):
                 overall_status = "degraded"
+            elif config.enable_session_persistence and not session_healthy:
+                overall_status = "degraded"
 
             return {
                 "status": overall_status,
                 "llm_connection": llm_healthy,
+                "session_persistence": {
+                    "enabled": config.enable_session_persistence,
+                    "healthy": session_healthy,
+                    "table_name": (
+                        config.dynamodb_table_name
+                        if config.enable_session_persistence
+                        else None
+                    ),
+                },
                 "sub_agents": agent_health,
                 "available_agents": self.client.get_available_agents(),
                 "graph_nodes": list(self.graph.nodes.keys()),
@@ -996,6 +1214,20 @@ class SupervisorAgent:
             logger.warning(f"LLM connection test failed: {e}")
             return False
 
+    async def _test_session_connection(self) -> bool:
+        """Test session management connection."""
+        if not self.checkpointer:
+            return True  # Not enabled, so considered healthy
+
+        try:
+            # Test by trying to get a non-existent session
+            test_config = self._get_graph_config("health-check-test")
+            await self.checkpointer.aget_tuple(test_config)
+            return True
+        except Exception as e:
+            logger.warning(f"Session connection test failed: {e}")
+            return False
+
     def visualize_graph(self) -> str:
         """
         Generate a visual representation of the graph.
@@ -1009,3 +1241,99 @@ class SupervisorAgent:
         except Exception as e:
             logger.error(f"Failed to visualize graph: {e}")
             return "Unable to generate graph visualization"
+
+    async def get_session_history(
+        self, session_id: str, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Get conversation history for a session.
+
+        Args:
+            session_id: Session identifier
+            limit: Maximum number of checkpoints to retrieve
+
+        Returns:
+            List of conversation checkpoints
+        """
+        if not self.checkpointer:
+            logger.warning("Session persistence not enabled")
+            return []
+
+        try:
+            config = self._get_graph_config(session_id)
+            checkpoints = []
+
+            async for checkpoint_tuple in self.checkpointer.alist(config, limit=limit):
+                checkpoint_data = {
+                    "checkpoint_id": checkpoint_tuple.checkpoint["id"],
+                    "timestamp": checkpoint_tuple.checkpoint["ts"],
+                    "metadata": checkpoint_tuple.metadata,
+                    "messages": checkpoint_tuple.checkpoint.get(
+                        "channel_values", {}
+                    ).get("messages", []),
+                }
+                checkpoints.append(checkpoint_data)
+
+            return checkpoints
+
+        except Exception as e:
+            logger.error(f"Failed to get session history: {e}")
+            return []
+
+    async def clear_session_history(self, session_id: str) -> bool:
+        """
+        Clear conversation history for a session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.checkpointer:
+            logger.warning("Session persistence not enabled")
+            return False
+
+        try:
+            # Note: DynamoDB checkpointer doesn't have a direct clear method
+            # In a production system, you might want to implement this by
+            # querying and deleting all checkpoints for the session
+            logger.warning("Session clearing not implemented for DynamoDB checkpointer")
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to clear session history: {e}")
+            return False
+
+    async def get_session_state(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the current state of a session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Current session state or None if not found
+        """
+        if not self.checkpointer:
+            logger.warning("Session persistence not enabled")
+            return None
+
+        try:
+            config = self._get_graph_config(session_id)
+            checkpoint_tuple = await self.checkpointer.aget_tuple(config)
+
+            if checkpoint_tuple:
+                return {
+                    "session_id": session_id,
+                    "checkpoint_id": checkpoint_tuple.checkpoint["id"],
+                    "timestamp": checkpoint_tuple.checkpoint["ts"],
+                    "state": checkpoint_tuple.checkpoint.get("channel_values", {}),
+                    "metadata": checkpoint_tuple.metadata,
+                }
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get session state: {e}")
+            return None

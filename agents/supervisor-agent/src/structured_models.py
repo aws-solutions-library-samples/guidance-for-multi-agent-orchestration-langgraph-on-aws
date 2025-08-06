@@ -120,3 +120,58 @@ class FollowUpAssessment(BaseModel):
     can_proceed: bool = Field(
         description="Whether we have enough information to proceed with the request"
     )
+
+
+class SupervisorDecision(BaseModel):
+    """Combined structured output for intent analysis, agent selection, and direct response capability."""
+    
+    # Intent analysis
+    primary_intent: str = Field(
+        description="The primary intent category: order, product, troubleshooting, personalization, or general"
+    )
+    all_intents: List[str] = Field(
+        description="All detected intent categories in order of relevance"
+    )
+    intent_confidence: float = Field(
+        ge=0.0, le=1.0,
+        description="Confidence score for the primary intent (0.0 to 1.0)"
+    )
+    
+    # Direct response capability
+    can_respond_directly: bool = Field(
+        description="Whether the supervisor can respond directly without calling sub-agents"
+    )
+    direct_response: Optional[str] = Field(
+        default=None,
+        description="Direct response from supervisor if no sub-agents are needed",
+        max_length=600
+    )
+    
+    # Agent selection (only if can_respond_directly is False)
+    selected_agents: List[str] = Field(
+        default=[],
+        description="List of agent names to call: order_management, product_recommendation, troubleshooting, personalization"
+    )
+    execution_order: List[str] = Field(
+        default=[],
+        description="Order in which agents should be called"
+    )
+    parallel_execution: bool = Field(
+        default=True,
+        description="Whether agents can be called in parallel or must be sequential"
+    )
+    
+    # Additional context
+    customer_id_mentioned: bool = Field(
+        description="Whether a customer ID (like cust001) is mentioned in the message"
+    )
+    key_entities: List[str] = Field(
+        default=[],
+        description="Important entities mentioned: order IDs, product names, customer IDs, etc."
+    )
+    urgency_level: str = Field(
+        description="Urgency level: low, medium, high, urgent"
+    )
+    reasoning: str = Field(
+        description="Explanation of the decision-making process"
+    )
