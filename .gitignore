@@ -1,3 +1,6 @@
+# CDK Context (contains account-specific data)
+cdk.context.json
+
 # Logs
 logs
 *.log
@@ -372,6 +375,7 @@ frontend/.vite/
 
 # CDK outputs
 cdk-outputs.json
+infra/outputs.json
 # Lambda function compiled files
 infra/lib/streaming-api/resolver-function/*.js
 infra/lib/streaming-api/resolver-function/*.js.map
@@ -390,3 +394,13 @@ frontend/.vite/
 
 # CDK outputs
 cdk-outputs.json
+# Development and internal documentation (exclude from public repo)
+.kiro/
+AGENT_IMPLEMENTATION_GUIDE.md
+AWS_DEPLOYMENT_PLAN.md
+LANGGRAPH_SUPERVISOR_IMPLEMENTATION.md
+PLANNING.md
+RULES.md
+TASK.md
+README.template.md
+graphql-implementation.md

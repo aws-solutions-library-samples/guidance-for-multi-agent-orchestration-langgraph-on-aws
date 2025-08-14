@@ -64,7 +64,7 @@ class BaseConfig:
     def _get_default_claude_37_inference_profile(self) -> str:
         """
         Get the appropriate Claude 3.7 Sonnet cross-region inference profile based on AWS region.
-        
+
         Returns:
             str: The inference profile ID for Claude 3.7 Sonnet
         """
@@ -72,27 +72,32 @@ class BaseConfig:
         claude_37_profiles = {
             # EU regions - all use the same EU inference profile (250 RPM)
             "eu-west-1": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-            "eu-central-1": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0", 
+            "eu-central-1": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
             "eu-west-3": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
             "eu-north-1": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
-            
             # US regions - all use the same US inference profile (250 RPM)
             "us-east-1": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
             "us-east-2": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
             "us-west-2": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
         }
-        
+
         # Get the inference profile for the current region
         region = self.aws_default_region
         if region in claude_37_profiles:
             profile_id = claude_37_profiles[region]
-            print(f"✅ Using Claude 3.7 Sonnet cross-region inference profile for {region}: {profile_id}")
-            print(f"   Quota: 250 requests/minute (125x improvement over previous Claude 3 Sonnet)")
+            print(
+                f"✅ Using Claude 3.7 Sonnet cross-region inference profile for {region}: {profile_id}"
+            )
+            print(
+                f"   Quota: 250 requests/minute (125x improvement over previous Claude 3 Sonnet)"
+            )
             return profile_id
         else:
             # Fallback to standard Claude 3.7 Sonnet for unsupported regions
             fallback_model = "anthropic.claude-3-7-sonnet-20250219-v1:0"
-            print(f"⚠️  Region {region} not configured for Claude 3.7 Sonnet cross-region profiles")
+            print(
+                f"⚠️  Region {region} not configured for Claude 3.7 Sonnet cross-region profiles"
+            )
             print(f"   Falling back to standard model: {fallback_model}")
             print(f"   Note: This will have much lower quota (~5 RPM vs 250 RPM)")
             return fallback_model
@@ -100,7 +105,7 @@ class BaseConfig:
     def _get_default_haiku_35_inference_profile(self) -> str:
         """
         Get the appropriate Claude 3.7 Sonnet cross-region inference profile based on AWS region.
-        
+
         Returns:
             str: The inference profile ID for Claude 3.7 Sonnet
         """
@@ -108,27 +113,32 @@ class BaseConfig:
         claude_35_profiles = {
             # EU regions - all use the same EU inference profile (250 RPM)
             "eu-west-1": "eu.anthropic.claude-3-5-haiku-20241022-v1:0",
-            "eu-central-1": "eu.anthropic.claude-3-5-haiku-20241022-v1:0", 
+            "eu-central-1": "eu.anthropic.claude-3-5-haiku-20241022-v1:0",
             "eu-west-3": "eu.anthropic.claude-3-5-haiku-20241022-v1:0",
             "eu-north-1": "eu.anthropic.claude-3-5-haiku-20241022-v1:0",
-            
             # US regions - all use the same US inference profile (250 RPM)
             "us-east-1": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
             "us-east-2": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
             "us-west-2": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
         }
-        
+
         # Get the inference profile for the current region
         region = self.aws_default_region
         if region in claude_35_profiles:
             profile_id = claude_35_profiles[region]
-            print(f"✅ Order Management Agent: Using Claude 3.7 Sonnet cross-region inference profile for {region}: {profile_id}")
-            print(f"   Quota: 250 requests/minute (125x improvement over previous Claude 3 Sonnet)")
+            print(
+                f"✅ Order Management Agent: Using Claude 3.7 Sonnet cross-region inference profile for {region}: {profile_id}"
+            )
+            print(
+                f"   Quota: 250 requests/minute (125x improvement over previous Claude 3 Sonnet)"
+            )
             return profile_id
         else:
             # Fallback to standard Claude 3.7 Sonnet for unsupported regions
             fallback_model = "anthropic.claude-3-7-sonnet-20250219-v1:0"
-            print(f"⚠️  Order Management Agent: Region {region} not configured for Claude 3.7 Sonnet cross-region profiles")
+            print(
+                f"⚠️  Order Management Agent: Region {region} not configured for Claude 3.7 Sonnet cross-region profiles"
+            )
             print(f"   Falling back to standard model: {fallback_model}")
             print(f"   Note: This will have much lower quota (~5 RPM vs 250 RPM)")
             return fallback_model
@@ -166,6 +176,17 @@ class SupervisorConfig(BaseConfig):
         )
         self.personalization_agent_url = os.getenv(
             "PERSONALIZATION_AGENT_URL", "http://personalization-agent:8000"
+        )
+
+        # DynamoDB Session Management Configuration
+        self.dynamodb_table_name = os.getenv(
+            "DYNAMODB_SESSION_TABLE", "langgraph-checkpoints"
+        )
+        self.dynamodb_endpoint_url = os.getenv(
+            "DYNAMODB_ENDPOINT_URL"
+        )  # For local development
+        self.enable_session_persistence = (
+            os.getenv("ENABLE_SESSION_PERSISTENCE", "true").lower() == "true"
         )
 
     def get_agent_urls(self) -> Dict[str, str]:

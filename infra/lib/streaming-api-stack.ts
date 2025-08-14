@@ -23,6 +23,7 @@ export class StreamingApiStack extends cdk.Stack {
   public readonly chatSessionsTable: dynamodb.Table;
   public readonly chatMessagesTable: dynamodb.Table;
   public readonly agentStatusTable: dynamodb.Table;
+  public readonly checkpointsTable: dynamodb.Table;
   public readonly resolverFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: StreamingApiStackProps) {
@@ -170,6 +171,23 @@ export class StreamingApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       // Add stream for real-time agent status updates
       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
+    });
+
+    // LangGraph Checkpoints Table for session persistence
+    this.checkpointsTable = new dynamodb.Table(this, 'CheckpointsTable', {
+      tableName: `langgraph-checkpoints-${props.environment}`,
+      partitionKey: {
+        name: 'thread_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'checkpoint_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     // Add GSI for agent type queries with health status filtering
@@ -490,6 +508,18 @@ export class StreamingApiStack extends cdk.Stack {
       value: this.agentStatusTable.tableArn,
       description: 'Agent Status DynamoDB Table ARN',
       exportName: `${props.environment}-AgentStatusTableArn`,
+    });
+
+    new cdk.CfnOutput(this, 'CheckpointsTableName', {
+      value: this.checkpointsTable.tableName,
+      description: 'LangGraph Checkpoints DynamoDB Table Name',
+      exportName: `${props.environment}-CheckpointsTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'CheckpointsTableArn', {
+      value: this.checkpointsTable.tableArn,
+      description: 'LangGraph Checkpoints DynamoDB Table ARN',
+      exportName: `${props.environment}-CheckpointsTableArn`,
     });
 
     // Add tags

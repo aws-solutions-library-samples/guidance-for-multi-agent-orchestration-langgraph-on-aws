@@ -37,7 +37,7 @@ from structured_models import (
     CustomerNeedAssessment,
     SupervisorDecision,
 )
-from dynamodb_session_saver import DynamoDBSaver, create_dynamodb_table
+from dynamodb_session_saver import DynamoDBSaver
 
 config = supervisor_config.config
 logger = logging.getLogger(__name__)

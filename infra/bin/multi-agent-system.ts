@@ -8,6 +8,7 @@ import { LoadBalancerStack } from '../lib/load-balancer-stack';
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { StreamingApiStack } from '../lib/streaming-api-stack';
 import { BedrockKnowledgeBaseStack } from '../lib/bedrock-knowledge-base-stack';
+import { FrontendStack } from '../lib/frontend-stack';
 
 const app = new cdk.App();
 
@@ -78,6 +79,15 @@ const streamingApiStack = new StreamingApiStack(app, `${stackPrefix}-StreamingAP
   stackName: `${stackPrefix}-StreamingAPI-${environment}`,
 });
 
+// Frontend Stack - React application hosting with S3 and CloudFront
+const frontendStack = new FrontendStack(app, `${stackPrefix}-Frontend-${environment}`, {
+  env,
+  environment,
+  streamingApiStackName: `${stackPrefix}-StreamingAPI-${environment}`,
+  description: 'Frontend infrastructure for multi-agent system',
+  stackName: `${stackPrefix}-Frontend-${environment}`,
+});
+
 // Monitoring Stack - CloudWatch, Alarms
 const monitoringStack = new MonitoringStack(app, `${stackPrefix}-Monitoring-${environment}`, {
   env,
@@ -96,10 +106,11 @@ ecsStack.addDependency(databaseStack);
 ecsStack.addDependency(loadBalancerStack);
 streamingApiStack.addDependency(networkStack);
 streamingApiStack.addDependency(loadBalancerStack);
+frontendStack.addDependency(streamingApiStack); // Frontend needs StreamingAPI outputs
 monitoringStack.addDependency(ecsStack);
 
 // Add tags to all stacks
-const stacks = [networkStack, databaseStack, ecsStack, loadBalancerStack, bedrockKnowledgeBaseStack, streamingApiStack, monitoringStack];
+const stacks = [networkStack, databaseStack, ecsStack, loadBalancerStack, bedrockKnowledgeBaseStack, streamingApiStack, frontendStack, monitoringStack];
 stacks.forEach(stack => {
   cdk.Tags.of(stack).add('Project', 'MultiAgentSystem');
   cdk.Tags.of(stack).add('Environment', environment);

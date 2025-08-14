@@ -300,6 +300,24 @@ export class BedrockKnowledgeBaseStack extends cdk.Stack {
     ossIndex.node.addDependency(this.opensearchCollection);
     ossIndex.node.addDependency(waitCondition);
 
+    // Wait for index to be queryable by Bedrock
+    const waitForIndex = new cdk.custom_resources.AwsCustomResource(this, 'WaitForIndex', {
+      onCreate: {
+        service: 'OpenSearchServerless',
+        action: 'batchGetCollection',
+        parameters: {
+          names: [collectionName]
+        },
+        physicalResourceId: cdk.custom_resources.PhysicalResourceId.of('WaitForIndex'),
+      },
+      policy: cdk.custom_resources.AwsCustomResourcePolicy.fromSdkCalls({
+        resources: cdk.custom_resources.AwsCustomResourcePolicy.ANY_RESOURCE,
+      }),
+      timeout: cdk.Duration.minutes(10),
+    });
+
+    waitForIndex.node.addDependency(ossIndex);
+
     // Knowledge Base - Created after index is ready
     this.knowledgeBase = new bedrock.CfnKnowledgeBase(this, 'UnstructuredKnowledgeBase', {
       name: `UnstructuredDataKB-${environment}`,
@@ -336,8 +354,8 @@ export class BedrockKnowledgeBaseStack extends cdk.Stack {
       },
     });
 
-    // Knowledge base depends directly on index
-    this.knowledgeBase.node.addDependency(ossIndex);
+    // Knowledge base depends directly on index wait condition
+    this.knowledgeBase.node.addDependency(waitForIndex);
 
     // Data Source
     this.dataSource = new bedrock.CfnDataSource(this, 'UnstructuredDataSource', {
