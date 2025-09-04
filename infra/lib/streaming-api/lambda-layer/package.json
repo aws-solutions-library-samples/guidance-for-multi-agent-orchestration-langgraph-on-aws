@@ -1,0 +1,11 @@
+{
+  "name": "multi-agent-graphql-resolver-layer",
+  "version": "1.0.0",
+  "description": "Lambda layer for Multi-Agent GraphQL resolver dependencies",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "uuid": "^9.0.0",
+    "axios": "^1.6.0"
+  }
+}

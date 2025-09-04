@@ -1,0 +1,173 @@
+# CDK Context (contains account-specific data)
+cdk.context.json
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# dotenv environment variable files
+.env
+.env.*
+!.env.example
+
+# Build outputs
+.next
+out
+.nuxt
+dist
+build/
+
+# Cache directories
+.cache
+.parcel-cache
+.vite/
+
+# Serverless directories
+.serverless/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+# Python lib directories (not CDK lib)
+**/lib/
+!infra/lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+htmlcov/
+.hypothesis/
+coverage.xml
+*.cover
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+# CDK build artifacts
+infra/cdk.out/
+infra/.cdk.staging/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/.vite/
+
+# Lambda function compiled files
+infra/lib/streaming-api/resolver-function/*.js
+infra/lib/streaming-api/resolver-function/*.js.map
+infra/lib/streaming-api/resolver-function/*.d.ts
+
+# CDK outputs
+cdk-outputs.json
+
+# Local development tools
+release.sh
+
+# Development files (not for public repo)
+.kiro/
+test_*
+test-*
+*.db
+.amazonq
+.mcp.json
+test-*
+# Lambda function compiled files
+infra/lib/streaming-api/resolver-function/*.js
+infra/lib/streaming-api/resolver-function/*.js.map
+infra/lib/streaming-api/resolver-function/*.d.ts
+infra/lib/streaming-api/stream-processor-function/*.js
+infra/lib/streaming-api/stream-processor-function/*.js.map
+infra/lib/streaming-api/stream-processor-function/*.d.ts
+
+# CDK build artifacts
+infra/cdk.out/
+infra/.cdk.staging/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/.vite/
+
+# CDK outputs
+cdk-outputs.json
+infra/outputs.json
+# Lambda function compiled files
+infra/lib/streaming-api/resolver-function/*.js
+infra/lib/streaming-api/resolver-function/*.js.map
+infra/lib/streaming-api/resolver-function/*.d.ts
+infra/lib/streaming-api/stream-processor-function/*.js
+infra/lib/streaming-api/stream-processor-function/*.js.map
+infra/lib/streaming-api/stream-processor-function/*.d.ts
+
+# CDK build artifacts
+infra/cdk.out/
+infra/.cdk.staging/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/.vite/
+
+# CDK outputs
+cdk-outputs.json

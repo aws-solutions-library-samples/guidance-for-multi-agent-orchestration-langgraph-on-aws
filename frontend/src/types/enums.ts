@@ -1,0 +1,34 @@
+// Enums matching GraphQL schema
+export enum AgentType {
+  ORDER_MANAGEMENT = 'ORDER_MANAGEMENT',
+  PRODUCT_RECOMMENDATION = 'PRODUCT_RECOMMENDATION',
+  PERSONALIZATION = 'PERSONALIZATION',
+  TROUBLESHOOTING = 'TROUBLESHOOTING',
+  SUPERVISOR = 'SUPERVISOR'
+}
+
+export enum AgentHealthStatus {
+  HEALTHY = 'HEALTHY',
+  DEGRADED = 'DEGRADED',
+  UNHEALTHY = 'UNHEALTHY',
+  UNKNOWN = 'UNKNOWN'
+}
+
+export enum MessageSender {
+  USER = 'USER',
+  AGENT = 'AGENT',
+  SYSTEM = 'SYSTEM'
+}
+
+export enum SessionStatus {
+  ACTIVE = 'ACTIVE',
+  CLOSED = 'CLOSED',
+  PAUSED = 'PAUSED'
+}
+
+export enum TaskStatus {
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED'
+}
