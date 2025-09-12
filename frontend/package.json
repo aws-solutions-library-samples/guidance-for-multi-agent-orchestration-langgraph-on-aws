@@ -17,7 +17,7 @@
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-slot": "^1.2.3",
     "@types/react-router-dom": "^5.3.3",
-    "ai": "^4.3.19",
+    "ai": "^5.0.43",
     "aws-amplify": "^6.15.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
