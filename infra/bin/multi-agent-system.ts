@@ -25,7 +25,7 @@ const environment = app.node.tryGetContext('environment') || 'dev';
 // Network Stack - VPC, Subnets, Security Groups
 const networkStack = new NetworkStack(app, `${stackPrefix}-Network-${environment}`, {
   env,
-  description: 'Network infrastructure for multi-agent system',
+  description: 'Guidance for Multi Agent Orchestration using LangGraph on AWS (SO9035) - Network infrastructure for multi-agent system',
   stackName: `${stackPrefix}-Network-${environment}`,
 });
 
