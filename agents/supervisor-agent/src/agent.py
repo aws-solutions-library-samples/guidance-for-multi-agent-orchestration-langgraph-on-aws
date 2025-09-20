@@ -797,7 +797,6 @@ class SupervisorAgent:
             RULES:
             - If customer ID is mentioned, consider including personalization agent
             - For complex requests, you may select multiple agents (max 3)
-            - Consider execution order (personalization first if customer context needed)
             - Prefer direct response for simple, generic questions
             - Use conversation history and messages to understand context and intent
             - Be decisive - either respond directly OR route to agents, not both
