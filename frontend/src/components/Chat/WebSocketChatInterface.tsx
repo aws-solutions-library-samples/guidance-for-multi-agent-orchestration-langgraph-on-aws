@@ -24,7 +24,7 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
     const inputRef = useRef<HTMLInputElement>(null);
     const [input, setInput] = useState('');
     const processedMessagesRef = useRef<Set<string>>(new Set());
-    const [agentProgress, setAgentProgress] = useState<Record<string, any>>({});
+    const [agentProgress, setAgentProgress] = useState<Array<{ id: string, agentType: string, data: any, timestamp: string }>>([]);
 
     // Session management (reused logic)
     const {
@@ -88,22 +88,27 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                 case 'progress':
                     // Handle agent progress messages
                     if (message.data) {
-                        // Update progress for each agent type in the message data
-                        const progressUpdate: Record<string, any> = {};
+                        // Add new progress entries for each agent type in the message data
+                        const newProgressEntries: Array<{ id: string, agentType: string, data: any, timestamp: string }> = [];
 
                         Object.keys(message.data).forEach(agentType => {
                             if (agentType !== 'synthesizer') {
-                                progressUpdate[agentType] = {
-                                    ...message.data[agentType],
-                                    timestamp: message.timestamp || new Date().toISOString(),
-                                    status: 'processing'
+                                const progressEntry = {
+                                    id: `${agentType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                    agentType: agentType,
+                                    data: {
+                                        ...message.data[agentType],
+                                        status: 'processing'
+                                    },
+                                    timestamp: message.timestamp || new Date().toISOString()
                                 };
+                                newProgressEntries.push(progressEntry);
                             }
                         });
 
-                        if (Object.keys(progressUpdate).length > 0) {
-                            setAgentProgress(prev => ({ ...prev, ...progressUpdate }));
-                            announceToScreenReader(`Progress update from ${Object.keys(progressUpdate).join(', ')} agent(s)`);
+                        if (newProgressEntries.length > 0) {
+                            setAgentProgress(prev => [...prev, ...newProgressEntries]);
+                            announceToScreenReader(`Progress update from ${newProgressEntries.map(e => e.agentType).join(', ')} agent(s)`);
                         }
 
                         // Handle synthesizer progress messages (no persistence, just UI updates)
@@ -128,7 +133,6 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                                     sessionId,
                                     AgentType.SUPERVISOR,
                                     {
-                                        confidence: synthesizer.confidence_score,
                                         processingTime: synthesizer.processing_time,
                                         completedAt: new Date().toISOString()
                                     }
@@ -142,7 +146,6 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                         if (onAgentResponse) {
                             onAgentResponse(AgentType.SUPERVISOR, {
                                 response: synthesizer.synthesized_response,
-                                confidence: synthesizer.confidence_score,
                                 processing_time: synthesizer.processing_time,
                                 messages: synthesizer.messages
                             });
@@ -161,7 +164,6 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                                 sessionId,
                                 message.agentType,
                                 {
-                                    confidence: message.data.confidence,
                                     processingTime: message.data.processing_time,
                                     completedAt: new Date().toISOString()
                                 }
@@ -381,7 +383,7 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                                     content={message.content}
                                     role={message.role}
                                     agentType={message.agentType}
-                                    confidence={message.confidence}
+
                                     processingTime={message.processingTime}
                                     timestamp={new Date(message.createdAt)}
                                     metadata={message.metadata}
@@ -479,15 +481,15 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                     Agent Progress
                 </h3>
 
-                {Object.keys(agentProgress).length === 0 ? (
+                {agentProgress.length === 0 ? (
                     <div style={{ color: '#64748b', fontStyle: 'italic' }}>
                         No active agent processing
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {Object.entries(agentProgress).map(([agentType, progress]) => (
+                        {agentProgress.slice().reverse().map((progressEntry) => (
                             <div
-                                key={agentType}
+                                key={progressEntry.id}
                                 style={{
                                     backgroundColor: 'white',
                                     border: '1px solid #e2e8f0',
@@ -506,7 +508,7 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                                         textTransform: 'capitalize',
                                         color: '#1f2937'
                                     }}>
-                                        {agentType.replace('_', ' ')}
+                                        {progressEntry.agentType.replace('_', ' ')}
                                     </div>
                                     <div style={{
                                         fontSize: '0.75rem',
@@ -515,12 +517,12 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                                         padding: '0.125rem 0.5rem',
                                         borderRadius: '0.25rem'
                                     }}>
-                                        {progress.status || 'Processing'}
+                                        {progressEntry.data.status || 'Processing'}
                                     </div>
                                 </div>
 
                                 {/* Supervisor-specific content */}
-                                {agentType === 'supervisor' && progress.intent_info && (
+                                {progressEntry.agentType === 'supervisor' && progressEntry.data.intent_info && (
                                     <div style={{ marginBottom: '0.5rem' }}>
                                         <div style={{ fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.25rem' }}>
                                             Intent Analysis:
@@ -532,11 +534,10 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                                             paddingLeft: '0.5rem',
                                             borderLeft: '2px solid #3b82f6'
                                         }}>
-                                            <div><strong>Primary Intent:</strong> {progress.intent_info.primary_intent}</div>
-                                            <div><strong>Confidence:</strong> {(progress.intent_info.confidence * 100).toFixed(1)}%</div>
-                                            <div><strong>Selected Agents:</strong> {progress.selected_agents?.join(', ') || 'None'}</div>
+                                            <div><strong>Primary Intent:</strong> {progressEntry.data.intent_info.primary_intent}</div>
+                                            <div><strong>Selected Agents:</strong> {progressEntry.data.selected_agents?.join(', ') || 'None'}</div>
                                         </div>
-                                        {progress.intent_info.reasoning && (
+                                        {progressEntry.data.intent_info.reasoning && (
                                             <div style={{
                                                 fontSize: '0.75rem',
                                                 color: '#374151',
@@ -546,19 +547,19 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                                                 borderRadius: '0.25rem',
                                                 border: '1px solid #e5e7eb'
                                             }}>
-                                                <strong>Reasoning:</strong> {progress.intent_info.reasoning}
+                                                <strong>Reasoning:</strong> {progressEntry.data.intent_info.reasoning}
                                             </div>
                                         )}
                                     </div>
                                 )}
 
                                 {/* Regular agent responses */}
-                                {progress.agent_responses && Object.keys(progress.agent_responses).length > 0 && (
+                                {progressEntry.data.agent_responses && Object.keys(progressEntry.data.agent_responses).length > 0 && (
                                     <div style={{ marginBottom: '0.5rem' }}>
                                         <div style={{ fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.25rem' }}>
                                             Agent Responses:
                                         </div>
-                                        {Object.entries(progress.agent_responses).map(([responseAgent, responseData]: [string, any]) => (
+                                        {Object.entries(progressEntry.data.agent_responses).map(([responseAgent, responseData]: [string, any]) => (
                                             <div key={responseAgent} style={{
                                                 fontSize: '0.75rem',
                                                 color: '#64748b',
@@ -572,15 +573,11 @@ const WebSocketChatInterface: React.FC<WebSocketChatInterfaceProps> = ({
                                     </div>
                                 )}
 
-                                {progress.confidence_score !== undefined && (
-                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                                        Confidence: {(progress.confidence_score * 100).toFixed(1)}%
-                                    </div>
-                                )}
 
-                                {progress.timestamp && (
+
+                                {progressEntry.timestamp && (
                                     <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                                        {new Date(progress.timestamp).toLocaleTimeString()}
+                                        {new Date(progressEntry.timestamp).toLocaleTimeString()}
                                     </div>
                                 )}
                             </div>

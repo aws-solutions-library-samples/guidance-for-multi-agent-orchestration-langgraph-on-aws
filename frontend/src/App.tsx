@@ -3,7 +3,6 @@ import { useAuthenticator } from '@aws-amplify/ui-react';
 import AuthenticatorWrapper from './components/auth/AuthenticatorWrapper';
 import ChatInterface from './components/Chat/ChatInterface';
 import WebSocketChatInterface from './components/Chat/WebSocketChatInterface';
-import WebSocketChatDemo from './components/Chat/WebSocketChatDemo';
 import TestGraphQL from './components/Chat/TestGraphQL';
 import Header from './components/layout/Header';
 
@@ -15,10 +14,10 @@ function AuthenticatedApp() {
         <Header />
         <main className="app-main">
           <Routes>
-            <Route path="/" element={<ChatInterface />} />
+            <Route path="/" element={<WebSocketChatInterface />} />
             <Route path="/chat" element={<ChatInterface />} />
             <Route path="/websocket" element={<WebSocketChatInterface />} />
-            <Route path="/websocket-demo" element={<WebSocketChatDemo />} />
+
             <Route path="/test" element={<TestGraphQL />} />
           </Routes>
         </main>

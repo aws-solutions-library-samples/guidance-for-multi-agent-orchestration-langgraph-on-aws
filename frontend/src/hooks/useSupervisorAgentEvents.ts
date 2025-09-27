@@ -37,19 +37,25 @@ export const useSupervisorAgentEvents = (
     }
 
     let channel: EventsChannel;
-    
+
     const connectAndSubscribe = async () => {
       try {
         setConnectionStatus('connecting');
-        
+
         // Connect to supervisor response channel
         const responseChannel = `/supervisor/${sessionId}/response`;
+        console.log(`Attempting to connect to channel: ${responseChannel}`);
+
         channel = await events.connect(responseChannel);
         channelRef.current = channel;
-        
+
+        console.log('Events channel connected successfully');
+        console.log('Channel object:', channel);
+
         // Subscribe to messages
         channel.subscribe({
           next: (data: any) => {
+            console.log('Received message on channel:', data);
             handleSupervisorMessage(data.event);
             setConnectionStatus('connected');
           },
@@ -59,7 +65,7 @@ export const useSupervisorAgentEvents = (
           },
         });
 
-        console.log(`Connected to channel: ${responseChannel}`);
+        console.log(`Successfully subscribed to channel: ${responseChannel}`);
       } catch (error) {
         console.error('Failed to connect to events channel:', error);
         setConnectionStatus('error');

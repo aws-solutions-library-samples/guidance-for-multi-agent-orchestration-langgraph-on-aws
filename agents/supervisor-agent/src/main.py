@@ -110,7 +110,7 @@ async def process_websocket_request(supervisor_request: SupervisorRequest):
                 # Publish updates back to WebSocket channel
                 if websocket_client and websocket_client.connected:
                     response_channel = f"/supervisor/{supervisor_request.session_id}/response"
-                    websocket_client.publish_events(response_channel, [update])
+                    # websocket_client.publish_events(response_channel, [update])
         else:
             logger.error("Supervisor agent not initialized")
             
