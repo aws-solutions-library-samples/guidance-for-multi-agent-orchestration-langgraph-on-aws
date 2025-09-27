@@ -2,6 +2,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import AuthenticatorWrapper from './components/auth/AuthenticatorWrapper';
 import ChatInterface from './components/Chat/ChatInterface';
+import WebSocketChatInterface from './components/Chat/WebSocketChatInterface';
+import WebSocketChatDemo from './components/Chat/WebSocketChatDemo';
 import TestGraphQL from './components/Chat/TestGraphQL';
 import Header from './components/layout/Header';
 
@@ -15,6 +17,8 @@ function AuthenticatedApp() {
           <Routes>
             <Route path="/" element={<ChatInterface />} />
             <Route path="/chat" element={<ChatInterface />} />
+            <Route path="/websocket" element={<WebSocketChatInterface />} />
+            <Route path="/websocket-demo" element={<WebSocketChatDemo />} />
             <Route path="/test" element={<TestGraphQL />} />
           </Routes>
         </main>
@@ -26,20 +30,20 @@ function AuthenticatedApp() {
 // Unauthenticated App Component
 function UnauthenticatedApp() {
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: '#f8fafc', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center' 
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#f8fafc',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
     }}>
       <div style={{ maxWidth: '28rem', width: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1 style={{ 
-            fontSize: '1.875rem', 
-            fontWeight: '700', 
-            color: '#1e293b', 
-            marginBottom: '0.5rem' 
+          <h1 style={{
+            fontSize: '1.875rem',
+            fontWeight: '700',
+            color: '#1e293b',
+            marginBottom: '0.5rem'
           }}>
             Welcome
           </h1>
@@ -67,12 +71,12 @@ function AppContent() {
   // Show loading state while configuring
   if (authStatus === 'configuring') {
     return (
-      <div style={{ 
-        minHeight: '100vh', 
-        backgroundColor: '#f8fafc', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center' 
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: '#f8fafc',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
       }}>
         <div style={{ textAlign: 'center' }}>
           <div className="animate-spin" style={{

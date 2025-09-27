@@ -88,11 +88,12 @@ class AgentNode(str, Enum):
 class SupervisorAgent:
     """Main supervisor agent for coordinating customer support interactions using LangGraph."""
 
-    def __init__(self):
+    def __init__(self, websocket_client=None):
         """Initialize the supervisor agent."""
         self.llm = self._initialize_llm()
         self.client = client.SubAgentClient()
         self.max_response_words = 100
+        self.websocket_client = websocket_client
 
         # Create structured output models
         self.intent_analyzer = self.llm.with_structured_output(IntentAnalysis)
@@ -531,6 +532,25 @@ class SupervisorAgent:
         else:
             return {}
 
+    def _publish_websocket_update(self, session_id: str, update: dict[str, Any]) -> None:
+        """
+        Publish update to WebSocket channel for the session.
+
+        Args:
+            session_id: Session identifier
+            update: Update data to publish
+        """
+        if not self.websocket_client or not self.websocket_client.connected:
+            return
+
+        try:
+            # Publish to response channel for this session
+            response_channel = f"/supervisor/{session_id}/response"
+            self.websocket_client.publish_events(response_channel, [update])
+            logger.debug(f"Published WebSocket update to {response_channel}: {update.get('type', 'unknown')}")
+        except Exception as e:
+            logger.warning(f"Failed to publish WebSocket update: {e}")
+
     async def process_request_stream(self, request: SupervisorRequest):
         """
         Process a customer support request using the LangGraph with streaming support.
@@ -555,26 +575,58 @@ class SupervisorAgent:
             # Prepare configuration for session management
             graph_config = self._get_graph_config(request.session_id)
 
+            # Publish start event
+            start_update = {
+                "type": "processing_started",
+                "data": {
+                    "session_id": request.session_id,
+                    "customer_message": request.customer_message
+                },
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+            self._publish_websocket_update(request.session_id, start_update)
+            yield start_update
+            
+            last_chunk=None
             # Stream the graph execution with updates mode
             async for chunk in self.graph.astream(
                 initial_state, config=graph_config, stream_mode="updates"
             ):
-                # Yield progress updates
-                yield {
+                # Create progress update
+                progress_update = {
                     "type": "progress",
                     "data": chunk,
                     "session_id": request.session_id,
                     "timestamp": time.time(),
                 }
+                
+                # Publish to WebSocket
+                self._publish_websocket_update(request.session_id, progress_update)
+                last_chunk=chunk
+                # Yield progress updates
+                yield progress_update
+
+            # Publish completion event
+            completion_update = {
+                "type": "processing_complete",
+                "session_id": request.session_id,
+                "data": last_chunk,
+                "timestamp": time.time(),
+            }
+            self._publish_websocket_update(request.session_id, completion_update)
+            yield completion_update
 
         except Exception as e:
             logger.error(f"Error in streaming request: {e}")
-            yield {
+            error_update = {
                 "type": "error",
                 "data": {"error": str(e)},
                 "session_id": request.session_id,
                 "timestamp": time.time(),
             }
+            self._publish_websocket_update(request.session_id, error_update)
+            yield error_update
 
     async def process_request_stream_tokens(self, request: SupervisorRequest):
         """
@@ -600,23 +652,43 @@ class SupervisorAgent:
             # Prepare configuration for session management
             graph_config = self._get_graph_config(request.session_id)
 
+            # Publish start event
+            start_update = {
+                "type": "token_streaming_started",
+                "data": {
+                    "session_id": request.session_id,
+                    "customer_message": request.customer_message
+                },
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+            self._publish_websocket_update(request.session_id, start_update)
+            yield start_update
+
             # Stream with multiple modes: updates for progress, messages for LLM tokens
             async for stream_type, chunk in self.graph.astream(
                 initial_state, config=graph_config, stream_mode=["updates", "messages"]
             ):
                 if stream_type == "updates":
-                    # Yield progress updates
-                    yield {
+                    # Create progress update
+                    progress_update = {
                         "type": "progress",
                         "data": chunk,
                         "session_id": request.session_id,
                         "timestamp": time.time(),
                     }
+                    
+                    # Publish to WebSocket
+                    self._publish_websocket_update(request.session_id, progress_update)
+                    
+                    # Yield progress updates
+                    yield progress_update
+                    
                 elif stream_type == "messages":
                     # Yield LLM token streams
                     message_chunk, metadata = chunk
                     if message_chunk.content:
-                        yield {
+                        token_update = {
                             "type": "token",
                             "data": {
                                 "content": message_chunk.content,
@@ -626,15 +698,31 @@ class SupervisorAgent:
                             "session_id": request.session_id,
                             "timestamp": time.time(),
                         }
+                        
+                        # Publish to WebSocket
+                        self._publish_websocket_update(request.session_id, token_update)
+                        
+                        yield token_update
+
+            # Publish completion event
+            completion_update = {
+                "type": "token_streaming_complete",
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+            self._publish_websocket_update(request.session_id, completion_update)
+            yield completion_update
 
         except Exception as e:
             logger.error(f"Error in token streaming request: {e}")
-            yield {
+            error_update = {
                 "type": "error",
                 "data": {"error": str(e)},
                 "session_id": request.session_id,
                 "timestamp": time.time(),
             }
+            self._publish_websocket_update(request.session_id, error_update)
+            yield error_update
 
     async def process_request(self, request: SupervisorRequest) -> dict[str, Any]:
         """
@@ -647,6 +735,18 @@ class SupervisorAgent:
             Response data in JSON format
         """
         try:
+            # Publish start event
+            start_update = {
+                "type": "request_processing_started",
+                "data": {
+                    "session_id": request.session_id,
+                    "customer_message": request.customer_message
+                },
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+            self._publish_websocket_update(request.session_id, start_update)
+
             # Prepare initial state
             initial_state = {
                 "customer_message": request.customer_message,
@@ -668,6 +768,19 @@ class SupervisorAgent:
                 initial_state, config=graph_config, stream_mode="values"
             ):
                 final_state = chunk
+                
+                # Publish intermediate state updates
+                state_update = {
+                    "type": "state_update",
+                    "data": {
+                        "current_node": chunk.get("current_node", "unknown"),
+                        "agents_called": chunk.get("selected_agents", []),
+                        "processing_stage": "in_progress"
+                    },
+                    "session_id": request.session_id,
+                    "timestamp": time.time(),
+                }
+                self._publish_websocket_update(request.session_id, state_update)
 
             # Helper function to format agent responses for validation
             def format_agent_response(
@@ -742,10 +855,34 @@ class SupervisorAgent:
                 "follow_up_needed": final_state.get("confidence_score", 0.1) < 0.7,
             }
 
+            # Publish completion event
+            completion_update = {
+                "type": "request_processing_complete",
+                "data": {
+                    "response": response_data["response"],
+                    "agents_called": response_data["agents_called"],
+                    "confidence_score": response_data["confidence_score"],
+                    "processing_time": response_data["processing_time"]
+                },
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+            self._publish_websocket_update(request.session_id, completion_update)
+
             return response_data
 
         except Exception as e:
             logger.error(f"Error processing request: {e}")
+            
+            # Publish error event
+            error_update = {
+                "type": "request_processing_error",
+                "data": {"error": str(e)},
+                "session_id": request.session_id,
+                "timestamp": time.time(),
+            }
+            self._publish_websocket_update(request.session_id, error_update)
+            
             return await self._handle_error(request, str(e))
 
     async def _make_supervisor_decision(self, state: GraphState) -> SupervisorDecision:
@@ -1030,6 +1167,13 @@ class SupervisorAgent:
             # Test session management
             session_healthy = await self._test_session_connection()
 
+            # Check WebSocket status
+            websocket_status = {
+                "enabled": self.websocket_client is not None,
+                "connected": self.websocket_client.connected if self.websocket_client else False,
+                "status": self.websocket_client.show_status() if self.websocket_client else None
+            }
+
             overall_status = "healthy"
             if not llm_healthy:
                 overall_status = "degraded"
@@ -1037,10 +1181,13 @@ class SupervisorAgent:
                 overall_status = "degraded"
             elif config.enable_session_persistence and not session_healthy:
                 overall_status = "degraded"
+            elif self.websocket_client and not self.websocket_client.connected:
+                overall_status = "degraded"
 
             return {
                 "status": overall_status,
                 "llm_connection": llm_healthy,
+                "websocket": websocket_status,
                 "session_persistence": {
                     "enabled": config.enable_session_persistence,
                     "healthy": session_healthy,

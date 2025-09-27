@@ -57,6 +57,18 @@ const bedrockKnowledgeBaseStack = new BedrockKnowledgeBaseStack(app, `${stackPre
   stackName: `${stackPrefix}-BedrockKB-${environment}`,
 });
 
+// Streaming API Stack - AppSync GraphQL API (created before ECS for Events API)
+const streamingApiStack = new StreamingApiStack(app, `${stackPrefix}-StreamingAPI-${environment}`, {
+  env,
+  vpc: networkStack.vpc,
+  ecsSecurityGroup: networkStack.ecsSecurityGroup,
+  lambdaSecurityGroup: networkStack.lambdaSecurityGroup,
+  environment,
+  supervisorAgentUrl: `http://${loadBalancerStack.loadBalancer.loadBalancerDnsName}`,
+  description: 'AppSync GraphQL API for multi-agent system',
+  stackName: `${stackPrefix}-StreamingAPI-${environment}`,
+});
+
 // ECS Stack - Clusters, Services, Task Definitions
 const ecsStack = new EcsStack(app, `${stackPrefix}-ECS-${environment}`, {
   env,
@@ -67,22 +79,15 @@ const ecsStack = new EcsStack(app, `${stackPrefix}-ECS-${environment}`, {
   targetGroups: loadBalancerStack.targetGroups,
   personalizationKnowledgeBaseId: bedrockKnowledgeBaseStack.personalizationKnowledgeBase.attrKnowledgeBaseId,
   troubleshootingKnowledgeBaseId: bedrockKnowledgeBaseStack.troubleshootingKnowledgeBase.attrKnowledgeBaseId,
+  // Pass Events API properties from streaming API stack
+  eventsApiId: streamingApiStack.eventsApi.apiId,
+  eventsApiArn: streamingApiStack.eventsApi.apiArn,
+  eventApiKey: Object.keys(streamingApiStack.eventsApi.apiKeys)[0] ? streamingApiStack.eventsApi.apiKeys[Object.keys(streamingApiStack.eventsApi.apiKeys)[0]].attrApiKey : 'No API key available',
+  // eventsApiEndpoint: `https://${streamingApiStack.eventsApi.apiId}.appsync-api.${env.region || 'us-east-1'}.amazonaws.com/event`,
+  eventsApiEndpoint: streamingApiStack.eventsApi.realtimeDns,
+  eventsApiHttpDomain: streamingApiStack.eventsApi.httpDns,
   description: 'ECS infrastructure for multi-agent system',
   stackName: `${stackPrefix}-ECS-${environment}`,
-});
-
-
-
-// Streaming API Stack - AppSync GraphQL API
-const streamingApiStack = new StreamingApiStack(app, `${stackPrefix}-StreamingAPI-${environment}`, {
-  env,
-  vpc: networkStack.vpc,
-  ecsSecurityGroup: networkStack.ecsSecurityGroup,
-  lambdaSecurityGroup: networkStack.lambdaSecurityGroup,
-  environment,
-  supervisorAgentUrl: `http://${loadBalancerStack.loadBalancer.loadBalancerDnsName}`,
-  description: 'AppSync GraphQL API for multi-agent system',
-  stackName: `${stackPrefix}-StreamingAPI-${environment}`,
 });
 
 // Frontend Stack - React application hosting with S3 and CloudFront
@@ -108,11 +113,12 @@ const monitoringStack = new MonitoringStack(app, `${stackPrefix}-Monitoring-${en
 databaseStack.addDependency(networkStack);
 loadBalancerStack.addDependency(networkStack);
 bedrockKnowledgeBaseStack.addDependency(networkStack);
+streamingApiStack.addDependency(networkStack);
+streamingApiStack.addDependency(loadBalancerStack);
 ecsStack.addDependency(databaseStack);
 ecsStack.addDependency(loadBalancerStack);
 ecsStack.addDependency(bedrockKnowledgeBaseStack);
-streamingApiStack.addDependency(networkStack);
-streamingApiStack.addDependency(loadBalancerStack);
+ecsStack.addDependency(streamingApiStack); // ECS needs Events API from streaming API stack
 frontendStack.addDependency(streamingApiStack); // Frontend needs StreamingAPI outputs
 monitoringStack.addDependency(ecsStack);
 

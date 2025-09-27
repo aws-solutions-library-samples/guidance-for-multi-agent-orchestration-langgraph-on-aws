@@ -19,6 +19,7 @@ export interface StreamingApiStackProps extends cdk.StackProps {
 
 export class StreamingApiStack extends cdk.Stack {
   public readonly graphqlApi: appsync.GraphqlApi;
+  public readonly eventsApi: appsync.EventApi;
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
   public readonly chatSessionsTable: dynamodb.Table;
@@ -301,6 +302,81 @@ export class StreamingApiStack extends cdk.Stack {
       xrayEnabled: true,
     });
 
+    // Define authorization providers
+    const iamProvider: appsync.AppSyncAuthProvider = {
+      authorizationType: appsync.AppSyncAuthorizationType.IAM,
+    };
+
+    const userPoolProvider: appsync.AppSyncAuthProvider = {
+      authorizationType: appsync.AppSyncAuthorizationType.USER_POOL,
+      cognitoConfig: {
+        userPool: this.userPool,
+      }
+    };
+
+    const apiKeyProvider: appsync.AppSyncAuthProvider = {
+      authorizationType: appsync.AppSyncAuthorizationType.API_KEY,
+    };
+
+    // Create AppSync Events API for real-time messaging
+    this.eventsApi = new appsync.EventApi(this, 'MultiAgentEventsApi', {
+      apiName: `multi-agent-events-api-${props.environment}`,
+      authorizationConfig: {
+        authProviders: [
+          userPoolProvider,
+          iamProvider,
+          apiKeyProvider
+        ],
+      },
+    });
+
+    // Create event channels for different types of real-time communication
+    this.eventsApi.addChannelNamespace('langgraph-sessions');
+    this.eventsApi.addChannelNamespace('agent-status');
+    this.eventsApi.addChannelNamespace('system-events');
+    this.eventsApi.addChannelNamespace('supervisor');
+    
+    // Add new channels for Events API pub/sub implementation
+    this.eventsApi.addChannelNamespace('langgraph-requests');   // Frontend → ECS
+    this.eventsApi.addChannelNamespace('langgraph-responses');  // ECS → Frontend
+
+    // Grant ECS task permission to publish to Events API
+    const eventsPublishPolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'appsync:PostToConnection',
+        'appsync:GetChannel',
+        'appsync:ListChannels'
+      ],
+      resources: [
+        `${this.eventsApi.apiArn}/*`,
+        `${this.eventsApi.apiArn}/channels/*`
+      ]
+    });
+
+    const eventsSubscribePolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'appsync:EventConnect',
+        'appsync:EventSubscribe'
+      ],
+      resources: [
+        `${this.eventsApi.apiArn}/*`,
+        `${this.eventsApi.apiArn}/channels/*`
+      ]
+    });
+
+    // Add policies to Lambda function for Events API access
+    this.resolverFunction.addToRolePolicy(eventsPublishPolicy);
+    this.resolverFunction.addToRolePolicy(eventsSubscribePolicy);
+
+    // Update Lambda environment variables
+    this.resolverFunction.addEnvironment('EVENTS_API_ID', this.eventsApi.apiId);
+    this.resolverFunction.addEnvironment('EVENTS_API_ARN', this.eventsApi.apiArn);
+    // this.resolverFunction.addEnvironment('EVENTS_API_ENDPOINT',
+    //   `https://${this.eventsApi.apiId}.appsync-api.${cdk.Stack.of(this).region}.amazonaws.com/event`);
+    this.resolverFunction.addEnvironment('EVENTS_API_ENDPOINT', this.eventsApi.realtimeDns);
+
     // Create Lambda data source
     const lambdaDataSource = this.graphqlApi.addLambdaDataSource(
       'LambdaDataSource',
@@ -503,6 +579,42 @@ export class StreamingApiStack extends cdk.Stack {
       exportName: `${props.environment}-CheckpointsTableArn`,
     });
 
+    // Add Events API outputs
+    new cdk.CfnOutput(this, 'EventsApiId', {
+      value: this.eventsApi.apiId,
+      description: 'AppSync Events API ID',
+      exportName: `${props.environment}-EventsApiId`,
+    });
+
+    new cdk.CfnOutput(this, 'EventsApiArn', {
+      value: this.eventsApi.apiArn,
+      description: 'AppSync Events API ARN',
+      exportName: `${props.environment}-EventsApiArn`,
+    });
+
+    // new cdk.CfnOutput(this, 'EventsApiEndpoint', {
+    //   value: `https://${this.eventsApi.apiId}.appsync-api.${cdk.Stack.of(this).region}.amazonaws.com/event`,
+    //   description: 'AppSync Events API Endpoint',
+    //   exportName: `${props.environment}-EventsApiEndpoint`,
+    // });
+
+    new cdk.CfnOutput(this, 'EventsApiEndpoint', {
+      value: this.eventsApi.realtimeDns,
+      description: 'AppSync Events API Endpoint',
+      exportName: `${props.environment}-EventsApiEndpoint`,
+    });
+
+    new cdk.CfnOutput(this, 'EventsApiKey', {
+      value: Object.keys(this.eventsApi.apiKeys)[0] ? this.eventsApi.apiKeys[Object.keys(this.eventsApi.apiKeys)[0]].attrApiKey : 'No API key available',
+      description: 'AppSync Events API Key',
+      exportName: `${props.environment}-EventsApiKey`,
+    });
+
+    new cdk.CfnOutput(this, 'EventsApiHttpDomain', {
+      value: this.eventsApi.httpDns,
+      description: 'AppSync Events API Http Domain',
+      exportName: `${props.environment}-EventsApiHttpDomain`,
+    });
     // Add tags
     cdk.Tags.of(this).add('Component', 'StreamingAPI');
     cdk.Tags.of(this).add('Environment', props.environment);

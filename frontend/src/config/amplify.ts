@@ -56,6 +56,12 @@ const amplifyConfig: ResourcesConfig = {
             endpoint: requiredEnvVars.graphqlApiUrl || '',
             region: requiredEnvVars.awsRegion || 'us-east-1',
             defaultAuthMode: 'userPool'
+        },
+        Events: {
+            // endpoint: import.meta.env.VITE_API_ENDPOINT || '',
+            endpoint: "https://kz477vlbgjclxbxmc7vhwpf2iq.appsync-api.us-east-1.amazonaws.com/event",
+            region: requiredEnvVars.awsRegion || 'us-east-1',
+            defaultAuthMode: 'userPool'
         }
     }
 };

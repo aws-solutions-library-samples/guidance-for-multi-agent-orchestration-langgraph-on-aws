@@ -19,6 +19,11 @@ export interface EcsStackProps extends cdk.StackProps {
   targetGroups: Map<string, elbv2.ApplicationTargetGroup>;
   personalizationKnowledgeBaseId: string;
   troubleshootingKnowledgeBaseId: string;
+  eventsApiId?: string;
+  eventsApiArn?: string;
+  eventsApiEndpoint?: string;
+  eventApiKey?: string
+  eventsApiHttpDomain?: string
 }
 
 export interface AgentConfig {
@@ -88,7 +93,7 @@ export class EcsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: EcsStackProps) {
     super(scope, id, props);
 
-    const { vpc, ecsSecurityGroup, databaseSecret, databaseClusterArn, targetGroups, personalizationKnowledgeBaseId, troubleshootingKnowledgeBaseId } = props;
+    const { vpc, ecsSecurityGroup, databaseSecret, databaseClusterArn, targetGroups, personalizationKnowledgeBaseId, troubleshootingKnowledgeBaseId, eventsApiId, eventsApiArn, eventsApiEndpoint, eventApiKey, eventsApiHttpDomain } = props;
 
     // Create Cloud Map namespace for service discovery
     this.cloudMapNamespace = new servicediscovery.PrivateDnsNamespace(this, 'MultiAgentNamespace', {
@@ -241,6 +246,27 @@ export class EcsStack extends cdk.Stack {
       })
     );
 
+    // Add permissions for AppSync Events API (if provided)
+    if (eventsApiArn) {
+      taskRole.addToPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: [
+            'appsync:PostToConnection',
+            'appsync:GetChannel',
+            'appsync:ListChannels',
+            'appsync:EventConnect',
+            'appsync:EventSubscribe'
+          ],
+          resources: [
+            eventsApiArn,
+            `${eventsApiArn}/*`,
+            `${eventsApiArn}/channels/*`
+          ],
+        })
+      );
+    }
+
     // Create ECR repositories and ECS infrastructure for each agent
     this.agentConfigs.forEach((agentConfig) => {
       this.createAgentInfrastructure(
@@ -254,7 +280,12 @@ export class EcsStack extends cdk.Stack {
         targetGroups,
         this.cloudMapNamespace,
         personalizationKnowledgeBaseId,
-        troubleshootingKnowledgeBaseId
+        troubleshootingKnowledgeBaseId,
+        eventsApiId,
+        eventsApiArn,
+        eventsApiEndpoint,
+        eventApiKey,
+        eventsApiHttpDomain
       );
     });
 
@@ -325,7 +356,12 @@ export class EcsStack extends cdk.Stack {
     targetGroups: Map<string, elbv2.ApplicationTargetGroup>,
     cloudMapNamespace: servicediscovery.PrivateDnsNamespace,
     personalizationKnowledgeBaseId: string,
-    troubleshootingKnowledgeBaseId: string
+    troubleshootingKnowledgeBaseId: string,
+    eventsApiId?: string,
+    eventsApiArn?: string,
+    eventsApiEndpoint?: string,
+    eventsApiKey?: string, 
+    eventsApiHttpDomain?: string
   ): void {
     const { name, port, cpu, memory, desiredCount, dockerContext, dockerfile } = agentConfig;
 
@@ -417,6 +453,16 @@ export class EcsStack extends cdk.Stack {
         ...(name === 'troubleshooting' ? {
           FAQ_KNOWLEDGE_BASE_ID: troubleshootingKnowledgeBaseId,
           TROUBLESHOOTING_KNOWLEDGE_BASE_ID: troubleshootingKnowledgeBaseId,
+        } : {}),
+        // AppSync Events API configuration (only for supervisor agent)
+        ...(name === 'supervisor' && eventsApiId ? {
+          EVENTS_API_ID: eventsApiId,
+          EVENTS_API_ARN: eventsApiArn || '',
+          EVENTS_API_ENDPOINT: eventsApiEndpoint || '',
+          APPSYNC_REALTIME: eventsApiEndpoint || '',
+          APPSYNC_API_KEY: eventsApiKey || '',
+          APPSYNC_HTTP_DOMAIN: eventsApiHttpDomain || ''
+
         } : {}),
       },
       secrets: {

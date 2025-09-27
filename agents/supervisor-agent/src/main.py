@@ -8,6 +8,8 @@ handling customer support requests and coordinating with sub-agents.
 import logging
 import time
 import os
+import json
+import asyncio
 from typing import Dict, Any
 from contextlib import asynccontextmanager
 
@@ -18,23 +20,151 @@ import uvicorn
 from shared.models import SupervisorRequest, SupervisorResponse
 from agent import SupervisorAgent
 from config import config
+from websocket_event_client import WebSocketEventClient, EventMessage
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 # Global agent instance
 supervisor_agent = None
+# Global WebSocket event client
+websocket_client = None
+# Global event loop reference
+main_event_loop = None
+
+
+def handle_websocket_message(event: EventMessage):
+    """
+    Handle incoming WebSocket messages from frontend and trigger agent processing.
+    This is a synchronous wrapper that schedules the async processing.
+    
+    Args:
+        event: WebSocket event message containing customer request
+    """
+    try:
+        logger.info(f"Received WebSocket message on channel: {event.channel}")
+        
+        # Parse the event data to extract customer request
+        event_data = event.event_data
+        event_data = json.loads(event_data)
+        
+        # Check if this is a customer request
+        if event_data.get("type") == "customer_request":
+            request_data = event_data.get("data", {})
+            
+            # Create SupervisorRequest from WebSocket data
+            supervisor_request = SupervisorRequest(
+                customer_message=request_data.get("customer_message", ""),
+                session_id=request_data.get("session_id", ""),
+                customer_id=request_data.get("customer_id"),
+                conversation_history=request_data.get("conversation_history", []),
+                context=request_data.get("context", {})
+            )
+            
+            logger.info(f"Processing WebSocket request for session: {supervisor_request.session_id}")
+            
+            # Schedule the async processing on the main event loop
+            if main_event_loop and not main_event_loop.is_closed():
+                # Schedule the coroutine to run on the main loop from this thread
+                asyncio.run_coroutine_threadsafe(
+                    process_websocket_request(supervisor_request), 
+                    main_event_loop
+                )
+            else:
+                logger.error("Main event loop not available or closed")
+                
+        else:
+            logger.debug(f"Ignoring non-request WebSocket message: {event_data.get('type')}")
+            
+    except Exception as e:
+        logger.error(f"Error handling WebSocket message: {e}")
+        
+        # Publish error back to WebSocket
+        if websocket_client and websocket_client.connected:
+            error_update = {
+                "type": "error",
+                "data": {"error": str(e)},
+                "timestamp": time.time(),
+            }
+            # Try to extract session_id for error channel
+            try:
+                session_id = event.event_data.get("data", {}).get("session_id", "unknown")
+                error_channel = f"/supervisor/{session_id}/response"
+                websocket_client.publish_events(error_channel, [error_update])
+            except:
+                logger.error("Could not publish error to WebSocket")
+
+
+async def process_websocket_request(supervisor_request: SupervisorRequest):
+    """
+    Async function to process WebSocket requests and publish updates.
+    
+    Args:
+        supervisor_request: The supervisor request to process
+    """
+    try:
+        # Process the request using the supervisor agent
+        if supervisor_agent:
+            # Process request and publish updates
+            async for update in supervisor_agent.process_request_stream(supervisor_request):
+                # Publish updates back to WebSocket channel
+                if websocket_client and websocket_client.connected:
+                    response_channel = f"/supervisor/{supervisor_request.session_id}/response"
+                    websocket_client.publish_events(response_channel, [update])
+        else:
+            logger.error("Supervisor agent not initialized")
+            
+    except Exception as e:
+        logger.error(f"Error processing WebSocket request: {e}")
+        
+        # Publish error back to WebSocket
+        if websocket_client and websocket_client.connected:
+            error_update = {
+                "type": "error",
+                "data": {"error": str(e)},
+                "timestamp": time.time(),
+            }
+            response_channel = f"/supervisor/{supervisor_request.session_id}/response"
+            websocket_client.publish_events(response_channel, [error_update])
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI application."""
-    global supervisor_agent
+    global supervisor_agent, websocket_client, main_event_loop
 
     # Startup
     logger.info("Starting supervisor agent service...")
     try:
-        supervisor_agent = SupervisorAgent()
+        # Store reference to the main event loop
+        main_event_loop = asyncio.get_running_loop()
+        # Initialize WebSocket event client
+        logger.info("Initializing WebSocket event client...")
+        websocket_client = WebSocketEventClient()
+        
+        # Try to connect to WebSocket
+        if websocket_client.connect():
+            logger.info("WebSocket event client connected successfully")
+            
+            # Subscribe to incoming customer requests channel
+            # Frontend will publish to this channel when customers send messages
+            incoming_channel = "/supervisor/*"
+            subscription_id = websocket_client.subscribe_to_channel(
+                incoming_channel, 
+                handle_websocket_message
+            )
+            
+            if subscription_id:
+                logger.info(f"Subscribed to incoming requests channel: {incoming_channel}")
+            else:
+                logger.warning("Failed to subscribe to incoming requests channel")
+                
+        else:
+            logger.warning("WebSocket event client failed to connect, continuing without WebSocket support")
+            websocket_client = None
+
+        # Initialize supervisor agent with WebSocket client
+        supervisor_agent = SupervisorAgent(websocket_client=websocket_client)
 
         # Log service discovery information
         from client import SubAgentClient
@@ -57,6 +187,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down supervisor agent service...")
+    if websocket_client:
+        try:
+            websocket_client.close()
+            logger.info("WebSocket event client closed")
+        except Exception as e:
+            logger.error(f"Error closing WebSocket client: {e}")
 
 
 # Create FastAPI application
@@ -334,6 +470,19 @@ async def agents_status() -> Dict[str, Any]:
         )
 
 
+@app.get("/ws/status")
+async def websocket_status():
+    """Get WebSocket client status."""
+    if not websocket_client:
+        return {"status": "disabled", "message": "WebSocket client not initialized"}
+    
+    return {
+        "status": "enabled",
+        "websocket_status": websocket_client.show_status(),
+        "subscriptions": websocket_client.get_subscriptions()
+    }
+
+
 @app.get("/")
 async def root():
     """Root endpoint with service information."""
@@ -345,6 +494,7 @@ async def root():
             "process": "/process",
             "process_stream": "/process/stream",
             "process_stream_tokens": "/process/stream/tokens",
+            "websocket_status": "/ws/status",
             "health": "/health",
             "agents_status": "/agents/status",
             "docs": "/docs",
