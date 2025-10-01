@@ -294,7 +294,7 @@ Expected Output: The Troubleshooting Agent provides step-by-step troubleshooting
 - **Persistent context**: Conversation history is maintained across interactions
 - **Personalized responses**: The system learns from user preferences and history
 
-![alt text](image.png)
+![Frontend](assets/images/multi-agent-ui.png)
 
 ## Implementation Options
 
