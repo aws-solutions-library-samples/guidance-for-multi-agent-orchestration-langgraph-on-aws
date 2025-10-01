@@ -139,7 +139,7 @@ const AgentMessage: React.FC<AgentMessageProps> = ({
               )}
               {processingTime && (
                 <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                  {processingTime}ms
+                  {processingTime.toFixed(2)} s
                 </span>
               )}
             </div>

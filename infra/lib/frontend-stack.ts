@@ -36,6 +36,7 @@ export class FrontendStack extends Stack {
 
     // Get StreamingAPI stack outputs for environment variables
     const graphqlApiUrl = Fn.importValue(`${props.environment}-GraphQLApiUrl`);
+    const graphqlRealTimeEndpoint = Fn.importValue(`${props.environment}-EventsApiHttpDomain`);
     const userPoolId = Fn.importValue(`${props.environment}-UserPoolId`);
     const userPoolClientId = Fn.importValue(`${props.environment}-UserPoolClientId`);
 
@@ -204,6 +205,7 @@ export class FrontendStack extends Stack {
       VITE_APP_TITLE: 'Multi-Agent Customer Support',
       VITE_APP_VERSION: '1.0.0',
       NODE_ENV: props.environment === 'prod' ? 'production' : 'development',
+      VITE_GRAPHQL_REALTIME_ENDPOINT:`https://${graphqlRealTimeEndpoint.toString()}/event`
     };
 
     const websiteAssets = new s3_assets.Asset(this, "WebsiteAssets", {
