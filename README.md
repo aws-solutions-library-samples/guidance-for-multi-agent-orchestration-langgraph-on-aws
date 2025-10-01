@@ -294,6 +294,22 @@ Expected Output: The Troubleshooting Agent provides step-by-step troubleshooting
 - **Persistent context**: Conversation history is maintained across interactions
 - **Personalized responses**: The system learns from user preferences and history
 
+![alt text](image.png)
+
+## Implementation Options
+
+This guidance provides two distinct implementation approaches for real-time communication, allowing you to choose the best fit for your use case:
+
+### WebSocket Implementation (default)
+WebSocket-based implementation using AWS AppSync Event API:
+- **Best for**: High-frequency real-time updates, live collaboration
+- **Features**: Lower latency, bidirectional communication, custom event handling
+
+### GraphQL Implementation (Default)
+The primary implementation uses AWS AppSync GraphQL API with real-time subscriptions:
+- **Best for**: Applications requiring structured queries, caching, and offline support
+
+
 ## Next Steps
 
 **Customization Options:**

@@ -96,11 +96,8 @@ class SupervisorAgent:
         self.websocket_client = websocket_client
 
         # Create structured output models
-        self.intent_analyzer = self.llm.with_structured_output(IntentAnalysis)
-        self.agent_selector = self.llm.with_structured_output(AgentSelection)
         self.response_synthesizer = self.llm.with_structured_output(ResponseSynthesis)
         self.error_handler = self.llm.with_structured_output(ErrorResponse)
-        self.need_assessor = self.llm.with_structured_output(CustomerNeedAssessment)
         self.supervisor_decision = self.llm.with_structured_output(SupervisorDecision)
 
         # Initialize session management
@@ -932,8 +929,7 @@ class SupervisorAgent:
             - general: Greetings, company info, vague requests
 
             RULES:
-            - If customer ID is mentioned, consider including personalization agent
-            - For complex requests, you may select multiple agents (max 3)
+            - You may select multiple agents (max 2) ONLY for COMPLEX QUERIES. DO NOT USE MULTIPLE AGENTS FOR SIMPLE QUERIES LIKE ORDER STATUS
             - Prefer direct response for simple, generic questions
             - Use conversation history and messages to understand context and intent
             - Be decisive - either respond directly OR route to agents, not both

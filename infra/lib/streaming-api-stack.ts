@@ -314,10 +314,17 @@ export class StreamingApiStack extends cdk.Stack {
       }
     };
 
-    const apiKeyProvider: appsync.AppSyncAuthProvider = {
-      authorizationType: appsync.AppSyncAuthorizationType.API_KEY,
+    const appSyncApiKeyConfig: appsync.AppSyncApiKeyConfig = {
+      description: 'Events API Key',
+      expires: cdk.Expiration.after(cdk.Duration.days(30)),
+      name: 'eventsAPIKey',
     };
 
+    const apiKeyProvider: appsync.AppSyncAuthProvider = {
+      authorizationType: appsync.AppSyncAuthorizationType.API_KEY,
+      apiKeyConfig: appSyncApiKeyConfig,
+    };
+    
     // Create AppSync Events API for real-time messaging
     this.eventsApi = new appsync.EventApi(this, 'MultiAgentEventsApi', {
       apiName: `multi-agent-events-api-${props.environment}`,
@@ -329,6 +336,7 @@ export class StreamingApiStack extends cdk.Stack {
         ],
       },
     });
+    
 
     // Create event channels for different types of real-time communication
     this.eventsApi.addChannelNamespace('langgraph-sessions');
@@ -605,7 +613,7 @@ export class StreamingApiStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'EventsApiKey', {
-      value: Object.keys(this.eventsApi.apiKeys)[0] ? this.eventsApi.apiKeys[Object.keys(this.eventsApi.apiKeys)[0]].attrApiKey : 'No API key available',
+      value: this.eventsApi.apiKeys['eventsAPIKey'] ? this.eventsApi.apiKeys['eventsAPIKey'].attrApiKey : 'No API key available',
       description: 'AppSync Events API Key',
       exportName: `${props.environment}-EventsApiKey`,
     });

@@ -7,13 +7,15 @@ console.log('VITE_USER_POOL_ID:', import.meta.env.VITE_USER_POOL_ID);
 console.log('VITE_USER_POOL_CLIENT_ID:', import.meta.env.VITE_USER_POOL_CLIENT_ID);
 console.log('VITE_GRAPHQL_API_URL:', import.meta.env.VITE_GRAPHQL_API_URL);
 console.log('VITE_AWS_REGION:', import.meta.env.VITE_AWS_REGION);
+console.log('VITE_GRAPHQL_REALTIME_ENDPOINT:', import.meta.env.VITE_GRAPHQL_REALTIME_ENDPOINT);
 
 // Validate required environment variables
 const requiredEnvVars = {
     userPoolId: import.meta.env.VITE_USER_POOL_ID,
     userPoolClientId: import.meta.env.VITE_USER_POOL_CLIENT_ID,
     graphqlApiUrl: import.meta.env.VITE_GRAPHQL_API_URL,
-    awsRegion: import.meta.env.VITE_AWS_REGION
+    awsRegion: import.meta.env.VITE_AWS_REGION,
+    graphqlRealtimeEndpoint: import.meta.env.VITE_GRAPHQL_REALTIME_ENDPOINT
 };
 
 // Check for missing environment variables
@@ -59,7 +61,7 @@ const amplifyConfig: ResourcesConfig = {
         },
         Events: {
             // endpoint: import.meta.env.VITE_API_ENDPOINT || '',
-            endpoint: "https://kz477vlbgjclxbxmc7vhwpf2iq.appsync-api.us-east-1.amazonaws.com/event",
+            endpoint: requiredEnvVars.graphqlRealtimeEndpoint,
             region: requiredEnvVars.awsRegion || 'us-east-1',
             defaultAuthMode: 'userPool'
         }
