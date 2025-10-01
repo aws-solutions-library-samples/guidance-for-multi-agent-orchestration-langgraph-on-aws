@@ -99,7 +99,6 @@ class WebSocketEventClient:
             subprotocols = ['aws-appsync-event-ws', self.get_auth_protocol()]
             
             logger.info(f"Connecting to: {ws_url}")
-            logger.debug(f"Subprotocols: {subprotocols}")
             
             try:
                 self.ws = websocket.WebSocket()
